@@ -1,24 +1,35 @@
-// Rafał Raczyński
-// Michał Smutkiewicz
-// Joanna Zalewska
+// Mini Pro
+// Lampka + klawiatura
 //
-// Zadanie 4
+// z pobudek religijnych odrzucam snejka
+// nie jestem w stanie tego przetestowac poza kompilacja
+//
+// (a ze guzik z C pamietam, pewnie eksploduje)
+//
+// ni w zab nie ogarniam tych char arrayow w funkcjach w C,
+// chca jakichs cost char pointerow
+// bo niby z C++ niekompatybilne...
+//
+//==========================================================================================================
+//                                                                                                   includy
+//==========================================================================================================
 
 #include <SPI.h>
 #include <Ethernet.h>
 #include <EthernetUdp.h>
 #include <Keypad.h>
 
+//==========================================================================================================
+//                                                                                                deklaracje
+//==========================================================================================================
+
+// Obsluga sieci
 byte mac[]={0x00, 0xaa, 0xbb, 0xcc, 0xde, 0xf3};
 EthernetUDP udp;
-
 char packetBuffer[255];
-char sendBuffer[1];
-int dec;
-
 int MAX_BUFFER_IN = 255;
-int MAX_BUFFER_OUT = 1;
 byte ip[] = { 10, 0, 0, 177 };
+
 
 // Oznaczenia literowe przycisków klawiatury
 char keys[4][3] = {
@@ -28,83 +39,160 @@ char keys[4][3] = {
   {'1', '2', '3'}
 };
 
-// Przyjęto następujące piny na rzędy i kolumny klawiatury:
+
+// Piny na rzędy i kolumny klawiatury:
 byte row[4] = {A4, A5, A0, 2};
 byte col[3] = {A2, A1, A3};
+
+// Klawiatura
 Keypad pad = Keypad(makeKeymap(keys), row, col, 4, 3);
 
-// w funkcji setup() inicjalizujemy serwer UDP na zadanym porcie, a także
-// przygotowujemy pin 3 do sterowania lampką (tak, jak w zadaniu 3 i 4)
+// Lampka
+int LAMP_PIN = 3;
+
+//==========================================================================================================
+//                                                                                                     setup
+//==========================================================================================================
+
 void setup() {
+
+  // Serial dla debugu, do wywalenia w ostatecznej wersji
   Serial.begin(115200);
-  Serial.println("test1");
-  //Ethernet.begin(mac);
+
+  // Ethernet musi byc wywolany z danym IP, bo siec niekoniecznie jest
+  // w stanie podac nam je automatycznie (do weryfikacji?)
   Ethernet.begin(mac, ip);
   Serial.println(Ethernet.localIP());
   short localPort = 2353;
   udp.begin(localPort);
-  Serial.println("test1");
-  pinMode(3, OUTPUT);
+
+  // Output do sterowania poziomem lampki
+  pinMode(LAMP_PIN, OUTPUT);
 }
 
-// w funkcji loop() nasłuchujemy nadchodzących poleceń. Jeśli takie nadejdzie,
-// odczytujemy wartość OCT i konwertujemy ją do postaci dziesiętnej. Uzyskana
-// w ten sposób liczba jest poziomem jasności lampki.
-// 
-// Nowym elementem jest tu próba odczytu wartości z klawiatury numerycznej, co niestety nie udało się.
-// Dopiero w czystym, testowym kodzie i przy zmianie wybranych portów odczytaliśmy poprawnie
-// naciskany klawisz.
+//==========================================================================================================
+//                                                                                                      loop
+//==========================================================================================================
+
 void loop() {
   
-  int size = udp.parsePacket();
-
-  if (size) {
-    Serial.println("test");
-    int r = udp.read(packetBuffer, MAX_BUFFER_IN);
-
-    Serial.print("packetBuffer=");
-    Serial.println(packetBuffer);
-
-    dec = oct_to_dec();
-
-    Serial.print("dec=");
-    Serial.println(dec);
-
-    analogWrite(3, dec);
-  }
-
-  char k = pad.getKey();
-
-  if (k != NO_KEY) {
-    Serial.println(k);
-    sendBuffer[0] = k;
-
-    udp.beginPacket(udp.remoteIP(), udp.remotePort());
-    int l = udp.write(sendBuffer, MAX_BUFFER_OUT);
-    udp.endPacket();
-
-    Serial.print("dec=");
-    Serial.println(dec);
-
-    analogWrite(3, (k-'0')*28);
-  }
+  getReqPickReaction();
+  getKeyAndLog(); // temp dla debugu
+  
 }
 
-int oct_to_dec() {
-  int oc = atoi(packetBuffer);
-  int dec = 1;
+//===========================================================================================================
+//                                                                                               inne funkcje
+//===========================================================================================================
+
+
+//====================================================================================== Obsluga zapytan ====
+void getReqPickReaction(){
+  
+  int size = udp.parsePacket();
+  
+  if (size) {
+
+    // Wstepne pobranie informacji o pakiecie
+    udp.read(packetBuffer, MAX_BUFFER_IN);
+    const char * reqType = getRequestType();
+    const char * device = getDeviceFromRequest();
+
+    // Reakcja na odpowiedni typ zapytania
+    if(reqType == "GET"){
+      // bla bla
+    }
+    else if(reqType ==  "PUT"){
+
+      // PUT musi zawierac jakas wartosc, raczej
+      const char * value = getValueFromRequest();
+
+      // Tylko LAMPKA obsluguje PUT (?)
+      if(device == "LAMPKA"){
+        int decValue = convertOctToDec(value);
+        setLightLevel(decValue);
+      }
+      else{
+        Serial.println("Nielegalne zadanie PUT, ignoruje.");
+        returnError();
+      }
+      
+    }
+    else {
+      Serial.println("Odebrano zapytanie nieznanego/nieobslugiwanego typu, ignoruje.");
+      returnError();
+    }
+  }
+  // else size=0, ignore, nie bede logowal zerowych
+}
+
+//============================================================== Pobieranie klawisza z klawiatury (+log) ====
+char getKeyAndLog() {
+  
+  char k = pad.getKey();
+
+  if(k != NO_KEY) {
+    Serial.println("KEYPAD: " + k);
+  }
+
+  return k;
+}
+
+//======================================================================= Konwersja z formatu OCT na DEC ====
+int convertOctToDec(const char value[]) {
+  
+  int octValue = atoi(value);
+  int decValue = 1;
   int i = 0;
   int temp = 0;
 
-  // Odczytana wartość modulo 10 (ostatnia cyfra) mnożona jest przez odpowiednią potęgę 8
-  // i dodawana do sumy. Niestety, nie zdążyliśmy zabezpieczyć funkcji przed wprowadzeniem złych
-  // cyfr (spoza formatu OCT).
-  while (oc != 0) {
-    temp = oc % 10;
-    oc /=10;
-    dec += temp * pow(8, i);
+  while (octValue != 0) {
+    temp = octValue % 10;
+    octValue /= 10;
+    decValue += temp * pow(8, i);
     i++;
   }
 
-  return dec;
+  return decValue;
 }
+
+//============================================================================ Pobieranie typu zapytania ====
+const char * getRequestType(){
+  // todo GET czy PUT, wyluskiwanie z req
+  return "PUT";
+}
+
+//==================================================================== Pobieranie czystej wartosci z PUT ====
+const char * getValueFromRequest(){
+  // obsluga wyluskiwania z pakietu CoAP czystej wartosci, jesli to PUT
+  return "100";
+}
+
+//================================== Pobieranie identyfikatora urzadzenia docelowego (klawiatura/lampka) ====
+const char * getDeviceFromRequest() {
+  //todo, odczyt czy lampka czy klawa
+  return "LAMPKA";
+}
+
+//=================================================================== Ustawianie stanu (jasnosci) lampki ====
+void setLightLevel(int level) {
+  analogWrite(LAMP_PIN, level);
+}
+
+//======================================================================= Zwroc blad przed lacze radiowe ====
+void returnError(){
+  // zwroc odpowiedni error code w zaleznosci od parametrow, todo
+}
+
+
+//===========================================================================================================
+//                                                                                            K O S T N I C A
+//===========================================================================================================
+
+
+
+        // potencjalnie uzyteczne
+        //
+        //udp.beginPacket(udp.remoteIP(), udp.remotePort());
+        //int l = udp.write(sendBuffer, MAX_BUFFER_OUT);
+        //udp.endPacket();
