@@ -41,7 +41,7 @@ char keys[4][3] = {
 
 
 // Piny na rzędy i kolumny klawiatury:
-byte row[4] = {A4, A5, A0, 2};
+byte row[4] = {4, 5, A0, 2};
 byte col[3] = {A2, A1, A3};
 
 // Klawiatura
@@ -49,6 +49,7 @@ Keypad pad = Keypad(makeKeymap(keys), row, col, 4, 3);
 
 // Lampka
 int LAMP_PIN = 3;
+int lampLightLevel = 255; // czyli nie swieci
 
 //==========================================================================================================
 //                                                                                                     setup
@@ -68,6 +69,9 @@ void setup() {
 
   // Output do sterowania poziomem lampki
   pinMode(LAMP_PIN, OUTPUT);
+
+  // Setup poziomu jasnosci na poczatkowy
+  setLightLevel(lampLightLevel);
 }
 
 //==========================================================================================================
@@ -76,7 +80,7 @@ void setup() {
 
 void loop() {
   
-  getReqPickReaction();
+  //getReqPickReaction();
   getKeyAndLog(); // temp dla debugu
   
 }
@@ -90,9 +94,10 @@ void loop() {
 void getReqPickReaction(){
   
   int size = udp.parsePacket();
-  
+  Serial.println("req loop");
   if (size) {
 
+    Serial.println("req loop size");
     // Wstepne pobranie informacji o pakiecie
     udp.read(packetBuffer, MAX_BUFFER_IN);
     const char * reqType = getRequestType();
@@ -132,7 +137,19 @@ char getKeyAndLog() {
   char k = pad.getKey();
 
   if(k != NO_KEY) {
-    Serial.println("KEYPAD: " + k);
+    Serial.print("KEYPAD: ");
+    Serial.println(k);
+    if(k == '*') {
+      Serial.print("DEBUG current light level: ");
+      Serial.println(lampLightLevel);
+    }
+    else {
+      int tempLightLevel = (k-'0')*51;
+      setLightLevel(tempLightLevel);
+      lampLightLevel = tempLightLevel;
+      Serial.print("DEBUG set light level: ");
+      Serial.println(lampLightLevel);
+    }
   }
 
   return k;
