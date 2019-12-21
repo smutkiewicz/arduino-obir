@@ -1,12 +1,34 @@
-#include <RF24Network.h>
-#include <RF24.h>
+#include <coap-simple.h>
 #include <SPI.h>
-
-RF24 radio (7,8);
-RF24Network network(radio);
+#include <Ethernet.h>
+#include <EthernetUdp.h>
+#include <stdio.h>
 
 int THIS_NODE_ID = 0;
 int PEER_NODE_ID = 1;
+
+byte mac[] = {0x00, 0xaa, 0xbb, 0xcc, 0xde, 0xf3};
+byte ip[] = {169, 254, 243, 41};    
+
+EthernetUDP udp;
+short localPort = 5683;
+Coap server(udp);
+
+char packetBuffer[255];
+char sendBuffer[1];
+char ReplyBuffer[] = "acknowledged";
+int MAX_BUFFER_IN = 255;
+int MAX_BUFFER_OUT = 1;
+
+String lightEndPoint = "light";
+String keyboardEndPoint = "keyboard";
+String generalEndPoint = ".well-known/core";
+String statisticsEndPoint = "statistics";
+
+//how bright the lamp is - 0 is off, 1000 is max brightness
+char lamp[4]="500";
+//what button was last pressed on keyboard
+char keyboard[1]="3";
 
 struct payload {
   unsigned short counter;
@@ -14,57 +36,78 @@ struct payload {
 
 void setup() {
   Serial.begin(115200);
-  SPI.begin();
-  radio.begin();
-  network.begin(47, THIS_NODE_ID);
+  Serial.println("hello");
+  //SPI.begin();
+  //radio.begin();
+  //network.begin(47, THIS_NODE_ID);
+  //ethernet connection
+  Ethernet.begin(mac,ip);
+  Serial.println("mac");
+  Serial.println(Ethernet.localIP());
+  Serial.println("ip");
+  udp.begin(localPort);
+
+  //create a COAP server
+  //add urls for stuff
+  server.server(lightCallback, lightEndPoint);
+  server.server(keyboardCallback, keyboardEndPoint);
+  server.server(generalCallback, generalEndPoint);
+  //start the coap server
+  server.start();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  struct payload p;
-  String readString = "";
+  server.loop();
+}
 
-  network.update();
+void ethernetParse(){
+    int size = udp.parsePacket();
 
-  while(network.available()){
-    RF24NetworkHeader header(THIS_NODE_ID);
-    bool success = network.read(header, &p, sizeof(p));
+  if (size) {
+    int r = udp.read(packetBuffer, MAX_BUFFER_IN);
 
-    if (success) {
-      Serial.print("Received = ");
-      Serial.println(p.counter);
-    } else {
-      Serial.print("Unable to process packet...");
+    Serial.print("packetBuffer=");
+    for(int i = 5; i < r-1; i++){
+      Serial.print(packetBuffer[i]);
+      }
+    Serial.println(packetBuffer[r-1]);
+    udp.beginPacket(udp.remoteIP(), udp.remotePort());
+    udp.write(ReplyBuffer);
+    udp.endPacket();
     }
+}
 
-  }
-    
-  while (Serial.available()){ 
-    delay(3);
-    if (Serial.available() > 0) {
-      char c = Serial.read();  //gets one byte from serial buffer
-      readString += c; //makes the string readString
-    } 
-  }
+//these are for radio
+void getLamp(){}
+void getKeyboard(){}
+void setLamp(){}
 
-  if (readString.length() >0) {
-      p.counter = atoi(readString.c_str());
-      RF24NetworkHeader header(PEER_NODE_ID);
-      bool success = network.write(header, &p, sizeof(p));
-      readString = "";
-      
-      if (success) {
-        Serial.print("Send packet = ");// + p.counter);  
-        Serial.println(p.counter);
-      } else {
-        Serial.println("Unable = " + p.counter);  
-        }
+//these are for COAP
+void lightCallback(CoapPacket &packet, IPAddress ip, int port){
+  if (packet.code==COAP_GET){
+        //get current value over the radio
+        getLamp();
+        server.sendResponse(ip, port, packet.messageid, lamp);
+    }
+  if (packet.code==COAP_PUT){
+    //copy payload to array
+    char p[packet.payloadlen + 1];
+    memcpy(p, packet.payload, packet.payloadlen);
+    //put null -> makes string
+    p[packet.payloadlen] = NULL;
+    String message(p);
+    //call this with p as value
+    setLamp();
+    Serial.println(message);
+  }
+}
+
+void keyboardCallback(CoapPacket &packet, IPAddress ip, int port){
+    if (packet.code==COAP_GET){
+        server.sendResponse(ip, port, packet.messageid, keyboard);
+        //get current value over the radio
+        getKeyboard();
+    }
   }
   
-}
-
-int convert_to_number(char c) {
-  int num = c - '0';
-  return num;
-}
-
+void generalCallback(){}
