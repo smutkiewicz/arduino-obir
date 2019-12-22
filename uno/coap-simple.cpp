@@ -339,3 +339,34 @@ uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *pa
 
     return this->sendPacket(packet, ip, port);
 }
+
+uint16_t Coap::notifyObserver(IPAddress ip, int port, uint8_t obs, char *payload, int payloadlen, uint8_t *token, uint8_t tokenlen)
+{
+    // make packet
+    /*CoapPacket packet;
+
+    packet.type = NON;
+    packet.code = CONTENT;
+    packet.token = token;
+    packet.tokenLen = tokenlen;
+    packet.payload = (uint8_t *)payload;
+    packet.payloadLen = payloadlen;
+    packet.optionnum = 0;
+    packet.messageId = NULL;
+
+    // if more options?
+    packet.options[packet.optionNum].buffer = &obs;
+    packet.options[packet.optionNum].length = 1;
+    packet.options[packet.optionNum].number = OBSERVE;
+    packet.optionNum++;
+    char optionBuffer[2];
+    optionBuffer[0] = ((uint16_t)TEXT_PLAIN & 0xFF00) >> 8;
+    optionBuffer[1] = ((uint16_t)TEXT_PLAIN & 0x00FF);
+    packet.options[packet.optionNum].buffer = (uint8_t *)optionBuffer;
+    packet.options[packet.optionNum].length = 2;
+    packet.options[packet.optionNum].number = CONTENT_FORMAT;
+    packet.optionNum++;
+
+    return this->sendPacket(packet, ip, port);*/
+    return true;
+}

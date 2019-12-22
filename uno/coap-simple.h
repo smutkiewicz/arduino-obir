@@ -76,6 +76,7 @@ typedef enum {
 
 typedef enum {
     COAP_IF_MATCH = 1,
+    COAP_OBSERVE = 2,
     COAP_URI_HOST = 3,
     COAP_E_TAG = 4,
     COAP_IF_NONE_MATCH = 5,
@@ -187,6 +188,8 @@ class Coap {
         uint16_t put(IPAddress ip, int port, char *url, char *payload, int payloadlen);
         uint16_t send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen);
         uint16_t send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen, COAP_CONTENT_TYPE content_type);
+        uint16_t notifyObserver(IPAddress ip, int port, uint8_t obs, char *payload, int payloadlen, uint8_t *token, uint8_t tokenlen);
+        
 
         bool loop();
 };
