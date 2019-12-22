@@ -1,21 +1,21 @@
 #include "coap-simple.h"
 #include <SPI.h>
-#include <RF24Network.h> 
+#include <RF24Network.h>
 #include <RF24.h>
 #include <Ethernet.h>
 #include <EthernetUdp.h>
 #include <stdio.h>
 
 // wiadomość w komunikacji radiowej pomiędzy Uno a Mini
-struct payload_t 
-{  
-  unsigned long timestamp; // stempel czasowy  
+struct payload_t
+{
+  unsigned long timestamp; // stempel czasowy
   int type; // typ resource'u
   int value; // przenoszona wartość
 };
 
 // pojedynczy obserwator
-struct observer 
+struct observer
 {
   IPAddress ip;
   int port;
@@ -25,14 +25,14 @@ struct observer
 };
 
 // zasoby
-int last_pressed = 0;
-int led_level = 0;
+int last_pressed = 35;
+int led_level = 950;
 
 // to poniżej to do konwersji
 // how bright the lamp is - 0 is off, 1000 is max brightness
 char lamp[4] = "500";
 // what button was last pressed on keyboard
-char keyboard[1] = "3";
+char keyboard = '3';
 
 // radio
 int THIS_NODE_ID = 0;
@@ -62,18 +62,18 @@ EthernetUDP udp;
 Coap server(udp);
 observer observers;
 
-// endpointy coap
+//coap endpoints
 String light = "light";
 String keybrd = "keyboard";
 String general = ".well-known/core";
 String statistics = "statistics";
 
-void setup() 
+void setup()
 {
   Serial.begin(115200);
   Serial.println("OBIR - Arduino UNO CoAP Server");
-  
-  // połaczenie Ethernet
+
+  //ethernet connection
   Ethernet.begin(mac, ip);
   Serial.print("ip: ");
   Serial.println(Ethernet.localIP());
@@ -86,76 +86,70 @@ void setup()
   server.server(general_callback, general);
   server.start(); //start the coap server
 
-  // połaczenie radiowe
+  //radio connection
   SPI.begin();
   radio.begin();
   network.begin(47, THIS_NODE_ID);
 }
 
-void loop() 
+void loop()
 {
   server.loop();
   radio_loop();
 }
 
-bool radio_send_msg(int type, int value) 
+bool radio_send_msg(int type, int value)
 {
   // update statistics
   Serial.print("Radio send message of type ");
   Serial.println(type);
-  
+
   payload_t payload{millis(), type, value};
   RF24NetworkHeader header(PEER_NODE_ID);
 
   bool success = network.write(header, &payload, sizeof(payload));
   if (success)
   {
-     Serial.println("Radio send message success.");
+    Serial.println("Radio send message success.");
   }
   else
   {
-     Serial.println("Radio send message failure.");
+    Serial.println("Radio send message failure.");
   }
 
   return success;
 }
 
-bool radio_receive_msg(payload_t* p) 
+bool radio_receive_msg(payload_t* p)
 {
   RF24NetworkHeader header(THIS_NODE_ID);
   return network.read(header, &p, sizeof(p));
 }
 
-void radio_loop() 
+void radio_loop()
 {
-  while(network.available()) 
-  {
+  while (network.available()) {
     payload_t payload;
     bool success = radio_receive_msg(&payload);
-    if (success)
-    {
+    if (success) {
       Serial.print("Received some stuff from peer with timestamp ");
       Serial.println(payload.timestamp);
       radio_handle_payload(payload);
-    }
-    else 
-    {
-      Serial.println("Ooopsie whoopsie, you've failed successfully to receive stuff");  
+    }else {
+      Serial.println("Ooopsie whoopsie, you've failed successfully to receive stuff");
     }
   }
 }
 
-void radio_handle_payload(payload_t payload) 
-{
-  switch (payload.type)
-  {
+void radio_handle_payload(payload_t payload) {
+  switch (payload.type) {
     case GET_LED:
       Serial.print("LED level = ");
       Serial.println(payload.value);
-      
+
       led_level = payload.value;
       break;
-      
+
     case GET_KEYBOARD:
       Serial.print("Last key pressed was \"");
       Serial.print(payload.value);
@@ -163,67 +157,69 @@ void radio_handle_payload(payload_t payload)
 
       last_pressed = payload.value;
 
-      // powiadom obserwatora here
-      
+      //updateObserver();
+
       break;
-      
+
     default:
-        Serial.println("Unknown radio message");
-        break;
-    }
+      Serial.println("Unknown radio message");
+      break;
+  }
 }
 
 //these are for radio
-void get_led() 
+void get_led()
 {
   Serial.println("Send GET_LED");
   radio_send_msg(GET_LED, 0);
 }
 
-void get_keyboard() 
+void get_keyboard()
 {
   Serial.println("Send GET_KEYBOARD");
   radio_send_msg(GET_KEYBOARD, 0);
 }
 
-void set_led(int value) 
+void set_led(int value)
 {
   Serial.print("Send SET_LED to ");
   Serial.println(value);
   radio_send_msg(SET_LED, value);
 }
 
-void ethernet_parse() 
-{
-  int size = udp.parsePacket();
-
-  if (size) 
-  {
-    int r = udp.read(packet_buffer, MAX_BUFFER_IN);
-
-    Serial.print("packetBuffer=");
-    for (int i = 5; i < r - 1; i++) 
-    {
-      Serial.print(packet_buffer[i]);
-    }
-    
-    Serial.println(packet_buffer[r - 1]);
-    udp.beginPacket(udp.remoteIP(), udp.remotePort());
-    udp.write(reply_buffer);
-    udp.endPacket();
-  }
-}
+//in here for test reasons
+//void ethernet_parse()
+//{
+//  int size = udp.parsePacket();
+//
+//  if (size)
+//  {
+//    int r = udp.read(packet_buffer, MAX_BUFFER_IN);
+//
+//    Serial.print("packetBuffer=");
+//    for (int i = 5; i < r - 1; i++)
+//    {
+//      Serial.print(packet_buffer[i]);
+//    }
+//
+//    Serial.println(packet_buffer[r - 1]);
+//    udp.beginPacket(udp.remoteIP(), udp.remotePort());
+//    udp.write(reply_buffer);
+//    udp.endPacket();
+//  }
+//}
 
 //these are for COAP
-void light_callback(CoapPacket &packet, IPAddress ip, int port) 
+void light_callback(CoapPacket &packet, IPAddress ip, int port)
 {
-  if (packet.code == COAP_GET) 
+  if (packet.code == COAP_GET)
   {
     //get current value over the radio
-    get_led();
+    //get_led();
+    itoclamp(led_level);
     server.sendResponse(ip, port, packet.messageid, lamp);
-  } 
-  else if (packet.code == COAP_PUT) 
+  }
+  else if (packet.code == COAP_PUT)
   {
     //copy payload to array
     char p[packet.payloadlen + 1];
@@ -237,15 +233,20 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
   }
 }
 
-void keyboard_callback(CoapPacket &packet, IPAddress ip, int port) 
+void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
 {
-  if (packet.code == COAP_GET) 
+  if (packet.code == COAP_GET)
   {
-    for (int i = 0; i < sizeof(packet.options); i++) 
+    //get current value over the radio
+    //get_keyboard();
+    Serial.println(keyboard);
+    keyboard = last_pressed;
+    Serial.println(keyboard);
+    for (int i = 0; i < sizeof(packet.options); i++)
     {
-      if (packet.options[i].number == 2) 
+      if (packet.options[i].number == 2)
       {
-        if (*(packet.options[i].buffer) == 88) 
+        if (*(packet.options[i].buffer) == 88)
         {
           observers.ip = ip;
           observers.port = port;
@@ -253,36 +254,45 @@ void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
           memcpy(observers.token, packet.token, packet.tokenlen);
           observers.tokenlen = packet.tokenlen;
           observers.counter++;
-          //server.notifyObserver(observers.ip, observers.port, observers.counter, keyboard, observers.token, observers.tokenlen);
+          server.notifyObserver(observers.ip, observers.port, observers.counter, &keyboard, observers.token, observers.tokenlen);
           break;
-        } 
-        else 
+        }
+        else
         {
           observers.counter = -1;
           break;
         }
       }
-      
-      server.sendResponse(ip, port, packet.messageid, keyboard);
-      //get current value over the radio
-      get_keyboard();
     }
+    server.sendResponse(ip, port, packet.messageid, &keyboard);
   }
 }
 
 void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
 {
-  
+
 }
 
-void general_callback(CoapPacket &packet, IPAddress ip, int port) 
+void general_callback(CoapPacket &packet, IPAddress ip, int port)
 {
-  
+
 }
 
-char* itoc(int i, int char_array_length)
+void itoclamp(int i)
 {
-  char str[char_array_length];
-  sprintf(str, "%d", i);
-  return str;
+  //  int char_array_length=1;
+  //  if (i < 10) {
+  //    char_array_length = 1;
+  //  } else if (i > 9 && i < 100) {
+  //    char_array_length = 2;
+  //  } else if ( i > 99 && i < 1000) {
+  //    char_array_length = 3;
+  //  } else if (i == 1000) {
+  //    char_array_length = 4;
+  //  } else {
+  //    Serial.println("zbyt duża wartosc");
+  //  }
+  //  char str[char_array_length];
+  sprintf(lamp, "%d", i);
+  //  return str;
 }
