@@ -215,7 +215,7 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
   if (packet.code == COAP_GET)
   {
     //get current value over the radio
-    //get_led();
+    get_led();
     itoclamp(led_level);
     server.sendResponse(ip, port, packet.messageid, lamp);
   }
@@ -228,7 +228,7 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
     p[packet.payloadlen] = NULL;
     String message(p);
     //call this with p as value
-    //set_led(atoi(p));
+    set_led(atoi(p));
     Serial.println(message);
   }
 }
@@ -238,10 +238,8 @@ void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
   if (packet.code == COAP_GET)
   {
     //get current value over the radio
-    //get_keyboard();
-    Serial.println(keyboard);
+    get_keyboard();
     keyboard = last_pressed;
-    Serial.println(keyboard);
     for (int i = 0; i < sizeof(packet.options); i++)
     {
       if (packet.options[i].number == 2)
