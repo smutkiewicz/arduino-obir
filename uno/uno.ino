@@ -29,6 +29,7 @@ struct observer
 //===========================================================================================================
 int last_pressed = 35;
 int led_level = 950;
+const String wellKnown = "</light>;ct=0,</keyboard>;ct=0;rt=\"obs\",</statistics>;ct=0";
 
 // dla ułatwienia konwersji dla payloadu
 char lamp[4] = "500"; // how bright the lamp is - 0 is off, 1000 is max brightness
@@ -57,7 +58,6 @@ const short STATS = 4;
 // komponenty dla potrzeb Ethernetu i CoAP
 //===========================================================================================================
 const short MAX_BUFFER_IN = 255;
-const short MAX_BUFFER_OUT = 1;
 const byte mac[] = {0x00, 0xaa, 0xbb, 0xcc, 0xde, 0xf3};
 const byte ip[] = {169, 254, 243, 41};
 const short localPort = 5683;
@@ -148,26 +148,26 @@ bool radio_receive_msg(payload_t* p)
 
 void radio_loop()
 {
-  while (network.available()) 
+  while (network.available())
   {
     payload_t payload;
     bool success = radio_receive_msg(&payload);
-    if (success) 
+    if (success)
     {
       Serial.print("Received some stuff from peer with timestamp ");
       Serial.println(payload.timestamp);
       radio_handle_payload(payload);
     }
-    else 
+    else
     {
       Serial.println("Ooopsie whoopsie, you've failed successfully to receive stuff");
     }
   }
 }
 
-void radio_handle_payload(payload_t payload) 
+void radio_handle_payload(payload_t payload)
 {
-  switch (payload.type) 
+  switch (payload.type)
   {
     case GET_LED:
       Serial.print("LED level = ");
@@ -216,28 +216,6 @@ void set_led(int value)
 // Serwer CoAP
 //===========================================================================================================
 
-//in here for test reasons
-//void ethernet_parse()
-//{
-//  int size = udp.parsePacket();
-//
-//  if (size)
-//  {
-//    int r = udp.read(packet_buffer, MAX_BUFFER_IN);
-//
-//    Serial.print("packetBuffer=");
-//    for (int i = 5; i < r - 1; i++)
-//    {
-//      Serial.print(packet_buffer[i]);
-//    }
-//
-//    Serial.println(packet_buffer[r - 1]);
-//    udp.beginPacket(udp.remoteIP(), udp.remotePort());
-//    udp.write(reply_buffer);
-//    udp.endPacket();
-//  }
-//}
-
 void light_callback(CoapPacket &packet, IPAddress ip, int port)
 {
   if (packet.code == COAP_GET)
@@ -263,14 +241,14 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
 
 void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
 {
+  int json = 0;
   if (packet.code == COAP_GET)
   {
     get_keyboard(); //get current value over the radio
     itockeyboard(last_pressed);
-    //keyboard = last_pressed;
     for (int i = 0; i < sizeof(packet.options); i++)
     {
-      if (packet.options[i].number == 2)
+      if (packet.options[i].number == 2) //observer
       {
         if (*(packet.options[i].buffer) == 88)
         {
@@ -288,9 +266,18 @@ void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
           our_observer.counter = -1;
           break;
         }
+      } if (packet.options[i].number == 50) {
+        json = 1;
       }
     }
-    server.sendResponse(ip, port, packet.messageid, &keyboard);
+    if (json == 0) {
+      server.sendResponse(ip, port, packet.messageid, &keyboard);
+    } else if (json == 1) {
+      String message = "{\"keyboard\": {\"key\": \"";
+      message += keyboard;
+      message += "\"}}";
+      server.sendResponse(ip, port, packet.messageid, message.c_str());
+    }
   }
 }
 
@@ -298,26 +285,26 @@ void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
 {
   String payload; // payload wiadomości dla klienta
   payload_t* return_msg; // uchwyt na wiadomosc zwrotną
-  
+
   unsigned long start_time, rtt, rtt_sum;
   short received = 0;
-  
-  Serial.println("Get radio statistics"); 
-  
-  for(uint8_t i = 0; i < 5; i++)
+
+  Serial.println("Get radio statistics");
+
+  for (uint8_t i = 0; i < 5; i++)
   {
     bool success_send = false;
     bool success_receive = false;
-    
+
     start_time = millis(); //rozpoczecie pomiaru czasu
     success_send = radio_send_msg(STATS, 0);
 
-    if (success_send) 
+    if (success_send)
     {
       success_receive = radio_receive_msg(return_msg);
       if (success_receive) received++;
     }
-    
+
     rtt = millis() - start_time; // obliczenie RTT
 
     if (success_send && success_receive) payload += "Success. ";
@@ -325,16 +312,26 @@ void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
     payload += "RTT: " + String(rtt) + "\n"; // złożenie informacji o RTT wiadomosci
   }
 
-  double packet_loss = ((5 - received)/5) * 100;
+  double packet_loss = ((5 - received) / 5) * 100;
   payload += "5 transmitted, " + String(received) + " received, " + String(packet_loss) + "% packet loss";
   int payload_length = payload.length();
 
-  // ->>>> send to delikwent
+  char message[payload.length() + 1];
+  strcpy(message, payload.c_str());
+  server.sendResponse(ip, port, packet.messageid, message);
+
 }
 
 void general_callback(CoapPacket &packet, IPAddress ip, int port)
 {
-
+  if (packet.code == COAP_GET)
+  {
+    Serial.println("get well known");
+    Serial.println(wellKnown);
+    server.sendResponse(ip, port, packet.messageid, wellKnown.c_str(), strlen(wellKnown.c_str()), COAP_CONTENT, COAP_APPLICATION_LINK_FORMAT, packet.token, packet.tokenlen);
+    //server.sendResponse(ip, port, packet.messageid, wellKnown.c_str());
+    Serial.println("resp sent");
+  }
 }
 
 //===========================================================================================================
