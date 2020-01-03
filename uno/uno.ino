@@ -22,6 +22,7 @@ struct observer
   uint8_t token[2];
   uint8_t tokenlen;
   uint8_t counter;
+  uint8_t content_type;
 };
 
 //===========================================================================================================
@@ -166,13 +167,12 @@ void radio_handle_payload(payload_t payload)
       break;
 
     case GET_KEYBOARD:
-      Serial.print("Last key pressed was \"");
-      Serial.print(payload.value);
-      Serial.println("\"");
+      Serial.print("Last key pressed was ");
+      Serial.println(payload.value);
 
       last_pressed = payload.value;
       keyboard = (char) last_pressed;
-      server.notifyObserver(our_observer.ip, our_observer.port, our_observer.counter, &keyboard, our_observer.token, our_observer.tokenlen);
+      notify();
 
       break;
 
@@ -205,15 +205,21 @@ void set_led(int value)
 // Serwer CoAP
 //===========================================================================================================
 
+void conack_callback(CoapPacket &packet, IPAddress ip, int port)
+{
+  if (packet.type == COAP_CON) server.sendAck(ip, port, packet.messageid, packet.token, packet.tokenlen);
+}
+
 void light_callback(CoapPacket &packet, IPAddress ip, int port)
 {
+  conack_callback(packet, ip, port);
+  
   if (packet.code == COAP_GET)
   {
     //get current value over the radio
     get_led();
     sprintf(lamp, "%d", led_level);
-
-    server.sendResponse(ip, port, packet.messageid, lamp);
+    server.sendResponse(ip, port, packet.messageid, lamp, strlen(lamp), packet.type, COAP_CONTENT, COAP_TEXT_PLAIN, packet.token, packet.tokenlen);
   }
   else if (packet.code == COAP_PUT)
   {
@@ -227,104 +233,170 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
   }
 }
 
+// Klient, aby stać się obserwatorem musi wysłać pakiet z opcją OBSERVE o wartości 0 i tak zostaje wpisany na listę obserwatorów, 
+// aby przestać obserwować zasób może wysłać wiadomość RST lub wiadomość z opcją Observe o wartości 1. 
+// Odpowiedź serwera następuje przy zmianie wartości zasobu, 
+// OBSERVE przyjmuje wartości sekwencji, token jest zawsze taki sam.
 void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
 {
+  String msg;
+  int observe = 0; // 0 - no option; 1 - observe; 2 - unobserve
   int json = 0;
+  COAP_CONTENT_TYPE content_type = COAP_TEXT_PLAIN;
+
+  conack_callback(packet, ip, port);
+  
   if (packet.code == COAP_GET)
   {
     get_keyboard(); //get current value over the radio
     keyboard = (char) last_pressed;
+    
     for (int i = 0; i < sizeof(packet.options); i++)
     { 
-      if (packet.options[i].number == 2) //observer
+      if (packet.options[i].number == COAP_OBSERVE) //observer
       {
-        if (*(packet.options[i].buffer) == 88)
-        {
-          Serial.println("observer");
-          our_observer.ip = ip;
-          our_observer.port = port;
-          our_observer.counter = 2;
-          memcpy(our_observer.token, packet.token, packet.tokenlen);
-          our_observer.tokenlen = packet.tokenlen;
-          our_observer.counter++;
-          server.notifyObserver(our_observer.ip, our_observer.port, our_observer.counter, &keyboard, our_observer.token, our_observer.tokenlen);
-          
-          break;
-        }
-        else
-        {
-          our_observer.counter = -1;
-          break;
-        }
+        if (*(packet.options[i].buffer) == 88) observe = 1;
+        else if (*(packet.options[i].buffer) == 1) observe = 2;
       } 
       
-      if (packet.options[i].number == 17) 
+      if (packet.options[i].number == COAP_ACCEPT) // json
       {
-        if (*(packet.options[i].buffer) == 50) json = 1;
+        if (*(packet.options[i].buffer) == COAP_APPLICATION_JSON) 
+        {
+          json = 1;
+          content_type = COAP_APPLICATION_JSON;
+        }
       }
     }
     
-    if (json == 0) 
+    if (observe == 0)
     {
-      server.sendResponse(ip, port, packet.messageid, &keyboard);
-    } 
-    else if (json == 1) 
-    {
-      String message = "{\"keyboard\": {\"key\": \"";
-      message += keyboard;
-      message += "\"}}";
-      server.sendResponse(ip, port, packet.messageid, message.c_str());
+      if (json == 0) 
+      {
+        msg = String(keyboard);
+      } 
+      else if (json == 1) 
+      {
+        msg = "{\"keyboard\": {\"key\": \"";
+        msg += keyboard;
+        msg += "\"}}";
+      }
+    
+      server.sendResponse(ip, port, packet.messageid, msg.c_str(), strlen(msg.c_str()), 
+                          packet.type, COAP_CONTENT, content_type, packet.token, packet.tokenlen);
     }
+    else if (observe == 1)
+    {
+      Serial.println("observe");
+      our_observer.ip = ip;
+      our_observer.port = port;
+      our_observer.counter = 2;
+      our_observer.content_type = (uint8_t) content_type;
+      memcpy(our_observer.token, packet.token, packet.tokenlen);
+      our_observer.tokenlen = packet.tokenlen;
+      notify();
+    }
+    else if (observe == 2) 
+    {
+      // przestań obserwować zasób
+      Serial.println("stop observing");
+      our_observer.counter = -1;
+    }  
+  } 
+  else if (packet.code == COAP_RESET || observe == 2) 
+  {
+    // przestań obserwować zasób
+    Serial.println("stop observing");
+    our_observer.counter = -1;
   }
 }
 
 void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
 {
-  String payload; // payload wiadomości dla klienta
-  payload_t* return_msg; // uchwyt na wiadomosc zwrotną
-
-  unsigned long start_time, rtt, rtt_sum = 0;
-  short received = 0;
-
-  Serial.println("Radio stats");
-
-  for (uint8_t i = 0; i < 5; i++)
+  conack_callback(packet, ip, port);
+  
+  if (packet.code == COAP_GET)
   {
-    bool success_send = false;
-    bool success_receive = false;
-
-    start_time = millis(); //rozpoczecie pomiaru czasu
-    success_send = radio_send_msg(STATS, 0);
-
-    if (success_send)
+    String payload; // payload wiadomości dla klienta
+    payload_t* return_msg; // uchwyt na wiadomosc zwrotną
+  
+    unsigned long start_time, rtt, rtt_sum = 0;
+    short received = 0;
+  
+    Serial.println("Radio stats");
+  
+    for (uint8_t i = 0; i < 5; i++)
     {
-      success_receive = radio_receive_msg(return_msg);
-      if (success_receive) received++;
+      bool success_send = false;
+      bool success_receive = false;
+  
+      start_time = millis(); //rozpoczecie pomiaru czasu
+      success_send = radio_send_msg(STATS, 0);
+  
+      if (success_send)
+      {
+        success_receive = radio_receive_msg(return_msg);
+        if (success_receive) received++;
+      }
+  
+      rtt = millis() - start_time; // obliczenie RTT
+      rtt_sum += rtt;
     }
-
-    rtt = millis() - start_time; // obliczenie RTT
-    rtt_sum += rtt;
+  
+    double packet_loss = ((5 - received) / 5) * 100;
+    double avg_rtt = rtt_sum / 5;
+    
+    payload = String(received) + "/5 received, " + String(packet_loss) + "% packet loss, avg rtt " + String(avg_rtt);
+    int payload_length = payload.length();
+    
+    server.sendResponse(ip, port, packet.messageid, payload.c_str(), strlen(payload.c_str()), 
+                        packet.type, COAP_CONTENT, COAP_TEXT_PLAIN, packet.token, packet.tokenlen);
+    
+    delete return_msg;
   }
-
-  double packet_loss = ((5 - received) / 5) * 100;
-  double avg_rtt = rtt_sum / 5;
-  
-  payload = String(received) + "/5 received, " + String(packet_loss) + "% packet loss, avg rtt " + String(avg_rtt);
-  int payload_length = payload.length();
-
-  server.sendResponse(ip, port, packet.messageid, payload.c_str());
-  
-  delete return_msg;
 }
 
 void general_callback(CoapPacket &packet, IPAddress ip, int port)
 {
+  conack_callback(packet, ip, port);
+  
   if (packet.code == COAP_GET)
   {
-    server.sendResponse(ip, port, packet.messageid, well_known.c_str(), strlen(well_known.c_str()), COAP_CONTENT, COAP_APPLICATION_LINK_FORMAT, packet.token, packet.tokenlen);
+    server.sendResponse(ip, port, packet.messageid, well_known.c_str(), strlen(well_known.c_str()), 
+                        packet.type, COAP_CONTENT, COAP_APPLICATION_LINK_FORMAT, packet.token, packet.tokenlen);
+  }
+}
+
+void notify()
+{
+  if (our_observer.counter != -1)
+  {
+    String msg;
+    if (our_observer.content_type == COAP_APPLICATION_JSON)
+    {
+       msg = "{\"keyboard\": {\"key\": \"";
+       msg += keyboard;
+       msg += "\"}}";
+    }
+    else
+    {
+       msg = String(keyboard);  
+    }
+        
+    server.notifyObserver(our_observer.ip, our_observer.port, our_observer.counter, msg.c_str(), 
+                          COAP_NONCON, COAP_CONTENT, our_observer.content_type,
+                          our_observer.token, our_observer.tokenlen);
+    our_observer.counter++;
   }
 }
 
 //===========================================================================================================
 // funkcje użytkowe
 //===========================================================================================================
+
+/*void print_options(CoapPacket &packet)
+{
+  Serial.print(String(packet.options[i].number));
+  Serial.print(" = ");
+  Serial.println(String(*(packet.options[i].buffer)));
+}*/

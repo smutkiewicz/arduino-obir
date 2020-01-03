@@ -290,12 +290,10 @@ bool Coap::loop() {
             }
         }
 
-        /* this type check did not use.
-        if (packet.type == COAP_CON) {
-            // send response 
-             sendResponse(_udp->remoteIP(), _udp->remotePort(), packet.messageid);
-        }
-         */
+        // this type check did not use.
+        /*if (packet.type == COAP_CON) {
+            sendResponse(_udp->remoteIP(), _udp->remotePort(), packet.messageid);
+        }*/
 
         // next packet
         packetlen = _udp->parsePacket();
@@ -304,48 +302,62 @@ bool Coap::loop() {
     return true;
 }
 
+uint16_t Coap::sendAck(IPAddress ip, int port, uint16_t messageid, uint8_t *token, int tokenlen) {
+    this->sendResponse(ip, port, messageid, NULL, 0, COAP_ACK, COAP_CONTENT, COAP_TEXT_PLAIN, token, tokenlen);
+}
+
 uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid) {
-    this->sendResponse(ip, port, messageid, NULL, 0, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
+    this->sendResponse(ip, port, messageid, NULL, 0, COAP_NONCON, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
+}
+
+uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, COAP_TYPE type) {
+    this->sendResponse(ip, port, messageid, payload, strlen(payload), type, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
 }
 
 uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload) {
-    this->sendResponse(ip, port, messageid, payload, strlen(payload), COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
+    this->sendResponse(ip, port, messageid, payload, strlen(payload), COAP_NONCON, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
 }
 
 uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen) {
-    this->sendResponse(ip, port, messageid, payload, payloadlen, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
+    this->sendResponse(ip, port, messageid, payload, payloadlen, COAP_NONCON, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
 }
 
+uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen,
+                COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE contentType, uint8_t *token, int tokenlen) {
+    this->sendResponse(ip, port, messageid, payload, payloadlen, COAP_NONCON, code, contentType, token, tokenlen);            
+}
 
 uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen,
-                COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE type, uint8_t *token, int tokenlen) {
+                            COAP_TYPE type, COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE contentType, 
+                            uint8_t *token, int tokenlen) {
     // make packet
     CoapPacket packet;
 
-    packet.type = COAP_ACK;
+    packet.type = type;
     packet.code = code;
     packet.token = token;
     packet.tokenlen = tokenlen;
-    packet.payload = (uint8_t *)payload;
+    packet.payload = (uint8_t*) payload;
     packet.payloadlen = payloadlen;
     packet.optionnum = 0;
     packet.messageid = messageid;
 
     // if more options?
     uint8_t optionBuffer[2] = {0};
-    optionBuffer[0] = ((uint16_t)type & 0xFF00) >> 8;
-    optionBuffer[1] = ((uint16_t)type & 0x00FF) ;
-	packet.addOption(COAP_CONTENT_FORMAT, 2, optionBuffer);
+    optionBuffer[0] = ((uint16_t) contentType & 0xFF00) >> 8;
+    optionBuffer[1] = ((uint16_t) contentType & 0x00FF) ;
+	  packet.addOption(COAP_CONTENT_FORMAT, 2, optionBuffer);
 
     return this->sendPacket(packet, ip, port);
 }
 
-uint16_t Coap::notifyObserver(IPAddress ip, int port, uint8_t obs, char *payload, uint8_t *token, uint8_t tokenlen)
+uint16_t Coap::notifyObserver(IPAddress ip, int port, uint8_t obs, char *payload, 
+                              COAP_TYPE type, COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE contentType, 
+                              uint8_t *token, uint8_t tokenlen)
 {
-    // make packet
     CoapPacket packet;
 
-    packet.type = COAP_NONCON;
+    packet.type = type;
     packet.code = COAP_CONTENT;
     packet.token = token;
     packet.tokenlen = tokenlen;
@@ -354,19 +366,20 @@ uint16_t Coap::notifyObserver(IPAddress ip, int port, uint8_t obs, char *payload
     packet.optionnum = 0;
     packet.messageid = NULL;
 
-    // if more options?
+    // opcja Observe
     packet.options[packet.optionnum].buffer = &obs;
     packet.options[packet.optionnum].length = 1;
-    packet.options[packet.optionnum].number = COAP_OBSERVE;
+    packet.options[packet.optionnum].number = 6;
     packet.optionnum++;
+
+    // opcja content type dla obserwatora
     char optionBuffer[2];
-    optionBuffer[0] = ((uint16_t)COAP_TEXT_PLAIN & 0xFF00) >> 8;
-    optionBuffer[1] = ((uint16_t)COAP_TEXT_PLAIN & 0x00FF);
+    optionBuffer[0] = ((uint16_t) contentType & 0xFF00) >> 8;
+    optionBuffer[1] = ((uint16_t) contentType & 0x00FF);
     packet.options[packet.optionnum].buffer = (uint8_t *)optionBuffer;
     packet.options[packet.optionnum].length = 2;
     packet.options[packet.optionnum].number = COAP_CONTENT_FORMAT;
     packet.optionnum++;
 
     return this->sendPacket(packet, ip, port);
-    return true;
 }

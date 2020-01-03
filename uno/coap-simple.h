@@ -76,10 +76,10 @@ typedef enum {
 
 typedef enum {
     COAP_IF_MATCH = 1,
-    COAP_OBSERVE = 2,
     COAP_URI_HOST = 3,
     COAP_E_TAG = 4,
     COAP_IF_NONE_MATCH = 5,
+    COAP_OBSERVE = 6,
     COAP_URI_PORT = 7,
     COAP_LOCATION_PATH = 8,
     COAP_URI_PATH = 11,
@@ -178,17 +178,22 @@ class Coap {
         void response(callback c) { resp = c; }
         
         void server(callback c, String url) { uri.add(c, url); }
+
+        uint16_t sendAck(IPAddress ip, int port, uint16_t messageid, uint8_t *token, int tokenlen);
+        
         uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid);
         uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload);
+        uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, COAP_TYPE type);
         uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen);
-        uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen, COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE type, uint8_t *token, int tokenlen);
+        uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen, COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE contentType, uint8_t *token, int tokenlen);
+        uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen, COAP_TYPE type, COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE contentType, uint8_t *token, int tokenlen);
         
         uint16_t get(IPAddress ip, int port, char *url);
         uint16_t put(IPAddress ip, int port, char *url, char *payload);
         uint16_t put(IPAddress ip, int port, char *url, char *payload, int payloadlen);
         uint16_t send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen);
         uint16_t send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen, COAP_CONTENT_TYPE content_type);
-        uint16_t notifyObserver(IPAddress ip, int port, uint8_t obs, char *payload, uint8_t *token, uint8_t tokenlen);
+        uint16_t notifyObserver(IPAddress ip, int port, uint8_t obs, char *payload, COAP_TYPE type, COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE contentType, uint8_t *token, uint8_t tokenlen);
         
 
         bool loop();
