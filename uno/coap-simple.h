@@ -2,23 +2,7 @@
 CoAP library for Arduino.
 This software is released under the MIT License.
 Copyright (c) 2014 Hirotaka Niisato
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-   
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+Source: https://github.com/hirotakaster/CoAP-simple-library
 */
 #ifndef __SIMPLE_COAP_H__
 #define __SIMPLE_COAP_H__
@@ -36,6 +20,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RESPONSE_CODE(class, detail) ((class << 5) | (detail))
 #define COAP_OPTION_DELTA(v, n) (v < 13 ? (*n = (0xFF & v)) : (v <= 0xFF + 13 ? (*n = 13) : (*n = 14)))
 
+// typy wiadomosci CoAP
 typedef enum {
     COAP_CON = 0,
     COAP_NONCON = 1,
@@ -43,6 +28,7 @@ typedef enum {
     COAP_RESET = 3
 } COAP_TYPE;
 
+// metody wiadomosci CoAP
 typedef enum {
     COAP_GET = 1,
     COAP_POST = 2,
@@ -50,6 +36,7 @@ typedef enum {
     COAP_DELETE = 4
 } COAP_METHOD;
 
+// kody odpowiedzi CoAP
 typedef enum {
     COAP_CREATED = RESPONSE_CODE(2, 1),
     COAP_DELETED = RESPONSE_CODE(2, 2),
@@ -60,7 +47,7 @@ typedef enum {
     COAP_UNAUTHORIZED = RESPONSE_CODE(4, 1),
     COAP_BAD_OPTION = RESPONSE_CODE(4, 2),
     COAP_FORBIDDEN = RESPONSE_CODE(4, 3),
-    COAP_NOT_FOUNT = RESPONSE_CODE(4, 4),
+    COAP_NOT_FOUND = RESPONSE_CODE(4, 4),
     COAP_METHOD_NOT_ALLOWD = RESPONSE_CODE(4, 5),
     COAP_NOT_ACCEPTABLE = RESPONSE_CODE(4, 6),
     COAP_PRECONDITION_FAILED = RESPONSE_CODE(4, 12),
@@ -74,35 +61,24 @@ typedef enum {
     COAP_PROXYING_NOT_SUPPORTED = RESPONSE_CODE(5, 5)
 } COAP_RESPONSE_CODE;
 
+// numery opcji CoAP
 typedef enum {
-    COAP_IF_MATCH = 1,
     COAP_URI_HOST = 3,
-    COAP_E_TAG = 4,
-    COAP_IF_NONE_MATCH = 5,
     COAP_OBSERVE = 6,
-    COAP_URI_PORT = 7,
-    COAP_LOCATION_PATH = 8,
     COAP_URI_PATH = 11,
     COAP_CONTENT_FORMAT = 12,
-    COAP_MAX_AGE = 14,
-    COAP_URI_QUERY = 15,
-    COAP_ACCEPT = 17,
-    COAP_LOCATION_QUERY = 20,
-    COAP_PROXY_URI = 35,
-    COAP_PROXY_SCHEME = 39
+    COAP_ACCEPT = 17
 } COAP_OPTION_NUMBER;
 
+// typ reprezentacji payload'u wiadomosci
 typedef enum {
     COAP_NONE = -1,
     COAP_TEXT_PLAIN = 0,
     COAP_APPLICATION_LINK_FORMAT = 40,
-    COAP_APPLICATION_XML = 41,
-    COAP_APPLICATION_OCTET_STREAM = 42,
-    COAP_APPLICATION_EXI = 47,
-    COAP_APPLICATION_JSON = 50,
-    COAP_APPLICATION_CBOR = 60
+    COAP_APPLICATION_JSON = 50
 } COAP_CONTENT_TYPE;
 
+// klasa reprezentująca pojedynczą opcję pakietu CoAP
 class CoapOption {
     public:
     uint8_t number;
@@ -112,21 +88,22 @@ class CoapOption {
 
 class CoapPacket {
     public:
-		uint8_t type;
-		uint8_t code;
+		uint8_t type; // COAP_TYPE
+		uint8_t code; // COAP_METHOD + COAP_RESPONSE_CODE (np. 2.05)
 		uint8_t *token;
 		uint8_t tokenlen;
 		uint8_t *payload;
-		uint8_t payloadlen;
-		uint16_t messageid;
+		uint8_t payloadlen; // długość payload'u
+		uint16_t messageid; // MID
 		
-		uint8_t optionnum;
+		uint8_t optionnum; // ilosć opcji w pakiecie
 		CoapOption options[MAX_OPTION_NUM];
 
 		void addOption(uint8_t number, uint8_t length, uint8_t *opt_payload);
 };
 typedef void (*callback)(CoapPacket &, IPAddress, int);
 
+// reprezentacja Uri w CoAP
 class CoapUri {
     private:
         String u[MAX_CALLBACK];
@@ -158,6 +135,11 @@ class CoapUri {
         } ;
 };
 
+//===========================================================================================================
+// Uwaga - poszczególne funkcje serwera CoAP skomentowane szczegółowo w pliku coap-simple.cpp
+//===========================================================================================================
+
+// reprezentacja serwera CoAP
 class Coap {
     private:
         UDP *_udp;
