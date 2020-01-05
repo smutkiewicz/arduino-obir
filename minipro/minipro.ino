@@ -17,8 +17,8 @@
 #include <SPI.h>
 #include <RF24Network.h>
 #include <RF24.h>
-#include <Ethernet.h>
-#include <EthernetUdp.h>
+//#include <Ethernet.h>
+//#include <EthernetUdp.h>
 #include <Keypad.h>
 
 //==========================================================================================================
@@ -60,11 +60,6 @@ int THIS_NODE_ID = 1;
 int PEER_NODE_ID = 0;
 int OUR_CHANNEL = 47; // Do sprawdzenia?
 int currentMessageID = 1;
-
-// messageID zwiekszane przy kazdym wyslanym payload
-// resourceType okresli czy wysylamy lampke, klawiature czy statystyki
-// "data" moze byc stanem lampki lub reprezentacja liczbowa klawisza
-// trzeba jeszcze pomyslec nad tym jak wyslac statystyki...
 
 // z uno
 struct payload_t
