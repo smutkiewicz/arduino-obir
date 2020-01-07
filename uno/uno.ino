@@ -6,7 +6,7 @@
 #include <EthernetUdp.h>
 #include <stdio.h>
 
-// wiadomość w komunikacji radiowej pomiędzy Uno a Mini
+// budowa wiadomości w komunikacji radiowej pomiędzy komponentami Uno i Mini
 struct payload_t
 {
   unsigned long timestamp; // stempel czasowy
@@ -14,7 +14,7 @@ struct payload_t
   int value; // przenoszona wartość
 };
 
-// pojedynczy obserwator
+// budowa pojedynczego obserwatora
 struct observer
 {
   IPAddress ip;
@@ -38,13 +38,13 @@ const String well_known = "</light>;ct=0,</keyboard>;ct=0;rt=\"obs\",</statistic
 char lamp[4] = "500"; // 0 - lampka wyłaczona, 1000 - max poziom światła
 char keyboard = '3'; // ostatni wcisniety znak na klawiaturze
 
-observer our_observer; // obserwator zasobu klawiatury
+observer our_observer; // obserwator klawiatury
 
 //===========================================================================================================
 // komponenty dla potrzeb radia
 //===========================================================================================================
-const short THIS_NODE_ID = 0; // radiowe id Arduino UNO
-const short PEER_NODE_ID = 1; // radiowe id Arduino Mini Pro
+const short THIS_NODE_ID = 0; // id Arduino UNO związane z radiem
+const short PEER_NODE_ID = 1; // id Arduino Mini Pro związane z radiem
 
 // komponenty radiowe
 RF24 radio(7, 8); 
@@ -106,19 +106,19 @@ void loop()
 // radio
 //===========================================================================================================
 
-// ogólna funkcja do wysyłania wiadomosci do Arduino Mini
+// ogólna funkcja do wysyłania wiadomości radiowych do Arduino Mini
 bool radio_send_msg(short type, int value)
 {
   Serial.print("Radio send msg type ");
   Serial.println(type);
 
   payload_t payload{millis(), type, value};
-  RF24NetworkHeader header(PEER_NODE_ID); // nagłówek wiadomosci przez radio, adresowanie do Mini
+  RF24NetworkHeader header(PEER_NODE_ID); // nagłówek wiadomości radiowej, nadanej do Mini
 
-  bool success = false; // czy wysłanie wiadomosci przez radio sie powiodlo
-  short retries = 1; // ilosc prób, max = 5
+  bool success = false; // czy wysłanie wiadomości przez radio się powiodło
+  short retries = 1; // ilość prób wysłania wiadomości przez radio, maks. 5
 
-  while (!success && retries < 6) // próbuj max 5 razy
+  while (!success && retries < 6) // próbuj maks. 5 razy
   {
     success = network.write(header, &payload, sizeof(payload)); // spróbuj wysłać wiadomosć
     if (success) Serial.println("Success.");
@@ -132,8 +132,8 @@ bool radio_send_msg(short type, int value)
 // ogólna funkcja do odbierania wiadomosci od Arduino Mini
 bool radio_receive_msg(payload_t* p)
 {
-  RF24NetworkHeader header(THIS_NODE_ID); // nagłówek wiadomosci przez radio, adresowanie do Uno
-  return network.read(header, &p, sizeof(p)); // spróbuj odebrać wiadomosć
+  RF24NetworkHeader header(THIS_NODE_ID); // nagłówek wiadomości radiowej, nadanej do Uno
+  return network.read(header, &p, sizeof(p)); // spróbuj odebrać wiadomość
 }
 
 // główna pętla radia
@@ -213,7 +213,7 @@ void set_led(int value)
 //===========================================================================================================
 
 // funkcja do odpowiadania pakietem ACK na pakiety typu CON
-// funkcja wspiera też coap ping - puste wiadomosci CON
+// funkcja wspiera też CoAP ping - puste wiadomosci CON
 void conack_callback(CoapPacket &packet, IPAddress ip, int port)
 {
   if (packet.type == COAP_CON) server.sendAck(ip, port, packet.messageid, packet.token, packet.tokenlen);
@@ -255,15 +255,15 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
 }
 
 // callback obsługujący żądania dotyczące klawiatury
-// Klient, aby stać się obserwatorem musi wysłać pakiet z opcją OBSERVE o wartości 0 i tak zostaje wpisany na listę obserwatorów, 
+// klient, aby stać się obserwatorem, musi wysłać pakiet z opcją OBSERVE o wartości 0, co sprawia iż zostaje wpisany na listę obserwatorów, 
 // aby przestać obserwować zasób może wysłać wiadomość RST lub wiadomość z opcją Observe o wartości 1. 
-// Odpowiedź serwera następuje przy zmianie wartości zasobu, 
-// OBSERVE przyjmuje wartości sekwencji, token jest zawsze taki sam.
+// Wiadomość od serwera zostaje wysłana przy zmianie wartości zasobu, 
+// OBSERVE przyjmuje kolejne wartości sekwencji, token jest zawsze taki sam.
 void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
 {
-  String msg; // tresć wiadomosci odpowiedzi
-  int observe = 0; // flaga pomocnicza (0 - no option; 1 - observe; 2 - unobserve)
-  int json = 0; // flaga pomocnicza opcji json
+  String msg;       // treść wiadomosci odpowiedzi
+  int observe = 0;  // flaga pomocnicza (0 - no option; 1 - observe; 2 - unobserve)
+  int json = 0;     // flaga pomocnicza opcji żądania w formacie JSON
   COAP_CONTENT_TYPE content_type = COAP_TEXT_PLAIN; // żądany typ reprezentacji zasobu
 
   conack_callback(packet, ip, port);
@@ -275,25 +275,25 @@ void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
     // dla każdej z opcji pakietu
     for (int i = 0; i < sizeof(packet.options); i++)
     { 
-      if (packet.options[i].number == COAP_OBSERVE) // sprawdź opcję observe
+      if (packet.options[i].number == COAP_OBSERVE)         // jeśli opcja observe
       {
-        if (*(packet.options[i].buffer) == 88) observe = 1; // obserwuj
+        if (*(packet.options[i].buffer) == 88) observe = 1;     // obserwuj
         else if (*(packet.options[i].buffer) == 1) observe = 2; // przestań obserwować
       } 
       
-      if (packet.options[i].number == COAP_ACCEPT) // sprawdź opcję accept
+      if (packet.options[i].number == COAP_ACCEPT) // jeśli opcja accept
       {
-        if (*(packet.options[i].buffer) == COAP_APPLICATION_JSON) 
+        if (*(packet.options[i].buffer) == COAP_APPLICATION_JSON) // jeśli opcja accept z opcją formatu JSON
         {
           json = 1;
-          content_type = COAP_APPLICATION_JSON; // odsyłaj wiadomosci o content-type json
+          content_type = COAP_APPLICATION_JSON; // odeślij w wiadomości content-type json
         }
       }
     }
     
     if (observe == 0) // zwykły pakiet GET
     {
-      // konwersja wiadomosci w zależnosci od content-type
+      // konwersja wiadomości w zależności od content-type
       if (json == 0) 
       {
         // text/plain
@@ -372,7 +372,7 @@ void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
       rtt_sum += rtt; // obliczenie sumarycznego RTT
     }
   
-    double packet_loss = ((5 - received) / 5) * 100; // procentowa utrata pakietów
+    double packet_loss = ((5 - received) / 5) * 100; // procent utraconych pakietów
     double avg_rtt = rtt_sum / 5; // srednie RTT
     
     payload = String(received) + "/5 received, " + String(packet_loss) + "% packet loss, avg rtt " + String(avg_rtt);
@@ -389,11 +389,11 @@ void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
 // funkcja powiadamiająca obserwatora o zmianie stanu zasobu klawiatury
 void notify()
 {
-  if (our_observer.counter != -1) // sprawdż, czy ktos jest zarejestrowany jako obserwator
+  if (our_observer.counter != -1) // sprawdż, czy ktoś jest zarejestrowany jako obserwator
   {
     String msg; // tresć wiadomosci odpowiedzi
 
-    // w zależnosci od preferowanego przez obserwatora typu, wyslij mu powiadomienie w odpowiedniej reprezentacji
+    // w zależności od preferowanego przez obserwatora typu, wyślij mu powiadomienie w odpowiedniej reprezentacji
     if (our_observer.content_type == COAP_APPLICATION_JSON)
     {
       // application/json

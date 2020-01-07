@@ -4,6 +4,7 @@
 #include <WProgram.h>
 #endif
 
+//biblioteka służąca do czyszczenia pamięci
 extern unsigned int __heap_start;
 extern void *__brkval;
 

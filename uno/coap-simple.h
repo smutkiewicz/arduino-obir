@@ -147,7 +147,6 @@ class Coap {
         callback resp;
         int _port;
 
-        uint16_t sendPacket(CoapPacket &packet, IPAddress ip);
         uint16_t sendPacket(CoapPacket &packet, IPAddress ip, int port);
         int parseOption(CoapOption *option, uint16_t *running_delta, uint8_t **buf, size_t buflen);
 
@@ -162,18 +161,10 @@ class Coap {
         void server(callback c, String url) { uri.add(c, url); }
 
         uint16_t sendAck(IPAddress ip, int port, uint16_t messageid, uint8_t *token, int tokenlen);
-        
-        uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid);
-        uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload);
-        uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, COAP_TYPE type);
-        uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen);
+
         uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen, COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE contentType, uint8_t *token, int tokenlen);
         uint16_t sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen, COAP_TYPE type, COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE contentType, uint8_t *token, int tokenlen);
         
-        uint16_t get(IPAddress ip, int port, char *url);
-        uint16_t put(IPAddress ip, int port, char *url, char *payload);
-        uint16_t put(IPAddress ip, int port, char *url, char *payload, int payloadlen);
-        uint16_t send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen);
         uint16_t send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen, COAP_CONTENT_TYPE content_type);
         uint16_t notifyObserver(IPAddress ip, int port, uint8_t obs, char *payload, COAP_TYPE type, COAP_RESPONSE_CODE code, COAP_CONTENT_TYPE contentType, uint8_t *token, uint8_t tokenlen);
         

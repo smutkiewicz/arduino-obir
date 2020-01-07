@@ -6,9 +6,9 @@
 // funkcja dodająca opcję do pakietu CoAP
 void CoapPacket::addOption(uint8_t number, uint8_t length, uint8_t *opt_payload)
 {
-    options[optionnum].number = number; // numer opcji
-    options[optionnum].length = length; // długosć bitowa bufora
-    options[optionnum].buffer = opt_payload; // bufor, zawartosć opcji
+    options[optionnum].number = number;       // numer opcji
+    options[optionnum].length = length;       // długosć bitowa bufora
+    options[optionnum].buffer = opt_payload;  // bufor, zawartosć opcji
     ++optionnum;
 }
 
@@ -19,22 +19,19 @@ Coap::Coap(
     this->_udp = &udp;
 }
 
-// funkcja inicjująca pracę serwera na porcie UDP
+// funkcja inicjująca pracę serwera na defaultowym porcie UDP
 bool Coap::start() {
     this->start(COAP_DEFAULT_PORT);
     return true;
 }
 
-// funkcja inicjująca pracę serwera na porcie UDP
+// funkcja inicjująca pracę serwera na wybranym porcie UDP
 bool Coap::start(int port) {
     this->_udp->begin(port);
     return true;
 }
 
-uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip) {
-    return this->sendPacket(packet, ip, COAP_DEFAULT_PORT);
-}
-
+// wysyłanie pakietu
 uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip, int port) {
     uint8_t buffer[BUF_MAX_SIZE];
     uint8_t *p = buffer; // wskaźnik na początek bufora pakietu
@@ -47,12 +44,12 @@ uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip, int port) {
     *p |= (packet.type & 0x03) << 4;
     *p++ |= (packet.tokenlen & 0x0F);
     *p++ = packet.code;
-    *p++ = (packet.messageid >> 8); // wpisanie pierwszych 8 bitów 16 bitowego MID
+    *p++ = (packet.messageid >> 8);   // wpisanie pierwszych 8 bitów 16 bitowego MID
     *p++ = (packet.messageid & 0xFF); // drugie 8 bitów bitowe AND z 0xFF
     p = buffer + COAP_HEADER_SIZE;
     packetSize += 4;
 
-    // stworzenie opcjonalnego tokenu, jesli jest niepusty
+    // dodanie opcjonalnego tokenu, jeśli istnieje
     if (packet.token != NULL && packet.tokenlen <= 0x0F) {
         memcpy(p, packet.token, packet.tokenlen);
         p += packet.tokenlen;
@@ -64,16 +61,17 @@ uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip, int port) {
         uint32_t optdelta;
         uint8_t len, delta;
 
-        // sprawdzenie, czy nagłówek opcji i jej wartosć zmieszczą się w buforze
+        // sprawdzenie, czy nagłówek opcji i jego zawartosć mieszczą się w buforze
         if (packetSize + 5 + packet.options[i].length >= BUF_MAX_SIZE) {
             return 0;
         }
+        
         optdelta = packet.options[i].number - running_delta;
         COAP_OPTION_DELTA(optdelta, &delta);
         COAP_OPTION_DELTA((uint32_t)packet.options[i].length, &len);
 
-        // w bloku opcji pierwsze 4 bity to delta, a kolejne 4 długosć
-        *p++ = (0xFF & (delta << 4 | len)); // przesuwamy deltę o 4 w lewo
+        // w bloku opcji pierwsze 4 bity to delta, a kolejne 4 długość
+        *p++ = (0xFF & (delta << 4 | len)); // przesunięcie delty o 4 bity w lewo
         if (delta == 13) {
             *p++ = (optdelta - 13);
             packetSize++;
@@ -107,28 +105,12 @@ uint16_t Coap::sendPacket(CoapPacket &packet, IPAddress ip, int port) {
         packetSize += 1 + packet.payloadlen;
     }
 
-    // wyslij
+    // wyślij
     _udp->beginPacket(ip, port);
     _udp->write(buffer, packetSize);
     _udp->endPacket();
 
     return packet.messageid;
-}
-
-uint16_t Coap::get(IPAddress ip, int port, char *url) {
-    return this->send(ip, port, url, COAP_CON, COAP_GET, NULL, 0, NULL, 0);
-}
-
-uint16_t Coap::put(IPAddress ip, int port, char *url, char *payload) {
-    return this->send(ip, port, url, COAP_CON, COAP_PUT, NULL, 0, (uint8_t *)payload, strlen(payload));
-}
-
-uint16_t Coap::put(IPAddress ip, int port, char *url, char *payload, int payloadlen) {
-    return this->send(ip, port, url, COAP_CON, COAP_PUT, NULL, 0, (uint8_t *)payload, payloadlen);
-}
-
-uint16_t Coap::send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen) {
-    return this->send(ip, port, url, COAP_CON, COAP_PUT, NULL, 0, (uint8_t *)payload, payloadlen, COAP_NONE);
 }
 
 uint16_t Coap::send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METHOD method, uint8_t *token, uint8_t tokenlen, uint8_t *payload, uint32_t payloadlen, COAP_CONTENT_TYPE content_type) {
@@ -149,7 +131,7 @@ uint16_t Coap::send(IPAddress ip, int port, char *url, COAP_TYPE type, COAP_METH
     String ipaddress = String(ip[0]) + String(".") + String(ip[1]) + String(".") + String(ip[2]) + String(".") + String(ip[3]); 
     packet.addOption(COAP_URI_HOST, ipaddress.length(), (uint8_t *)ipaddress.c_str());
 
-    // sparsuj URL
+    // parsowanie URL
     int idx = 0;
     for (int i = 0; i < strlen(url); i++) {
         if (url[i] == '/') {
@@ -230,7 +212,7 @@ bool Coap::loop() {
     uint8_t buffer[BUF_MAX_SIZE];
     int32_t packetlen = _udp->parsePacket(); // długosć pakietu
 
-    // jeśli długosc następnego pakietu jest większa niż 0, przetwarzaj
+    // jeśli długość następnego pakietu jest większa niż 0, przetwarzaj
     while (packetlen > 0) {
         packetlen = _udp->read(buffer, packetlen >= BUF_MAX_SIZE ? BUF_MAX_SIZE : packetlen);
 
@@ -323,22 +305,6 @@ bool Coap::loop() {
 // funkcja do wysyłania odpowiedzi ACK na pakiety typu Confirmable
 uint16_t Coap::sendAck(IPAddress ip, int port, uint16_t messageid, uint8_t *token, int tokenlen) {
     this->sendResponse(ip, port, messageid, NULL, 0, COAP_ACK, COAP_CONTENT, COAP_TEXT_PLAIN, token, tokenlen);
-}
-
-uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid) {
-    this->sendResponse(ip, port, messageid, NULL, 0, COAP_NONCON, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
-}
-
-uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, COAP_TYPE type) {
-    this->sendResponse(ip, port, messageid, payload, strlen(payload), type, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
-}
-
-uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload) {
-    this->sendResponse(ip, port, messageid, payload, strlen(payload), COAP_NONCON, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
-}
-
-uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen) {
-    this->sendResponse(ip, port, messageid, payload, payloadlen, COAP_NONCON, COAP_CONTENT, COAP_TEXT_PLAIN, NULL, 0);
 }
 
 uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen,
