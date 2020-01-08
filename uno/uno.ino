@@ -78,7 +78,7 @@ void setup()
   Serial.begin(115200);
 
   // konfiguracja połączenia Ethernet
-  Ethernet.begin(mac, ip);
+  /*Ethernet.begin(mac, ip);
   Serial.print("ip: ");
   Serial.println(Ethernet.localIP());
   udp.begin(local_port);
@@ -88,18 +88,43 @@ void setup()
   server.server(keyboard_callback, "keyboard");
   server.server(statistics_callback, "statistics");
   server.server(general_callback, ".well-known/core");
-  server.start(); // uruchom serwer coap
+  server.start(); // uruchom serwer coap*/
 
   // konfiguracja połączenia radiowego
   SPI.begin();
   radio.begin();
   network.begin(47, THIS_NODE_ID);
+  Serial.println("Setup done");
 }
 
+int i = 1;
 void loop()
 {
-  server.loop();
-  radio_loop();
+//  server.loop();
+  //radio_loop();
+
+//  int temp;
+//  RF24NetworkHeader header;
+//
+//   network.update();
+//   while(network.available()){
+//    network.read(header, &temp, sizeof(temp));
+//    Serial.println(temp);
+//   }
+
+RF24NetworkHeader header(PEER_NODE_ID);
+int value=10;
+bool succ = network.write(header, &value, sizeof(value));
+if(succ){
+  Serial.println("succ");
+}else{
+ Serial.println("fail");
+}
+  /*if (i == 1) {
+    get_led();
+    i = 0;
+  }*/
+  
 }
 
 //===========================================================================================================
@@ -132,15 +157,18 @@ bool radio_send_msg(short type, int value)
 // ogólna funkcja do odbierania wiadomosci od Arduino Mini
 bool radio_receive_msg(payload_t* p)
 {
-  RF24NetworkHeader header(THIS_NODE_ID); // nagłówek wiadomości radiowej, nadanej do Uno
+  RF24NetworkHeader header; // nagłówek wiadomości radiowej, nadanej do Mini
   return network.read(header, &p, sizeof(p)); // spróbuj odebrać wiadomość
 }
 
 // główna pętla radia
 void radio_loop()
 {
+  network.update();
+  
   while (network.available()) // sprawdź, czy nadeszła nowa wiadomosć
   {
+    Serial.println("dupa");
     payload_t payload;
     bool success = radio_receive_msg(&payload); // spróbuj odebrać wiadomosć
     if (success)
@@ -250,7 +278,18 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
     memcpy(p, packet.payload, packet.payloadlen);
     p[packet.payloadlen] = NULL; // put null -> makes string
     String message(p);
-    set_led(atoi(p)); // ustaw lampkę led na żądaną wartosć
+
+    int value = atoi(p);
+
+    if (0 <= value && value <= 1000) // sprawdź czy wartosć żądana jest z zakresu 
+    {
+      set_led(atoi(p)); // ustaw lampkę led na żądaną wartosć
+    }
+    else
+    {
+      server.sendResponse(ip, port, packet.messageid, message.c_str(), strlen(message.c_str()), 
+                          packet.type, COAP_BAD_REQUEST, COAP_TEXT_PLAIN, packet.token, packet.tokenlen); // odeslij odpowiedź o niepowodzeniu
+    }
   }
 }
 
