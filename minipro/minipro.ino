@@ -193,6 +193,7 @@ int convertOctToDec(const char value[]) {
 
 //=================================================================== Ustawianie stanu (jasnosci) lampki ====
 void setLightLevel(int level) {
+  Serial.println(level);
   analogWrite(LAMP_PIN, level);
   lampLightLevel = level;
 }
@@ -246,6 +247,7 @@ void loop() {
 
   network.update();
   while (network.available()){
+    Serial.println("DEBUG avail");
     getReqPickReaction();
   }
   
