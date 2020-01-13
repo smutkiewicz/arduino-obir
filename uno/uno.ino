@@ -39,6 +39,7 @@ char lamp[4] = "500"; // 0 - lampka wyłaczona, 1000 - max poziom światła
 char keyboard = '3'; // ostatni wcisniety znak na klawiaturze
 
 observer our_observer; // obserwator klawiatury
+bool first_loop = true; // czy musimy pobrać aktualny stan zasobów
 
 //===========================================================================================================
 // komponenty dla potrzeb radia
@@ -94,12 +95,16 @@ void setup()
   SPI.begin();
   radio.begin();
   network.begin(47, THIS_NODE_ID);
+  Serial.println("Setup done");
 }
 
 void loop()
 {
-  server.loop();
   radio_loop();
+  server.loop();
+
+  // pobierz wartosci zasobów na starcie
+  get_all();
 }
 
 //===========================================================================================================
@@ -130,7 +135,7 @@ bool radio_send_msg(short type, int value)
 }
 
 // ogólna funkcja do odbierania wiadomosci od Arduino Mini
-bool radio_receive_msg(payload_t* p)
+bool radio_read_msg(payload_t* p)
 {
   RF24NetworkHeader header(THIS_NODE_ID); // nagłówek wiadomości radiowej, nadanej do Uno
   return network.read(header, &p, sizeof(p)); // spróbuj odebrać wiadomość
@@ -139,21 +144,27 @@ bool radio_receive_msg(payload_t* p)
 // główna pętla radia
 void radio_loop()
 {
-  while (network.available()) // sprawdź, czy nadeszła nowa wiadomosć
+  bool success = false;
+  payload_t payload;
+  
+  network.update(); // odbierz nowe wiadomosci, funkcja niezbędna do działania powłoki RF24Network
+  
+  while (network.available()) // sprawdź, czy jest dostępna jakaś nowa wiadomosć
   {
-    payload_t payload;
-    bool success = radio_receive_msg(&payload); // spróbuj odebrać wiadomosć
+    success = radio_read_msg(&payload); // spróbuj odczytać wiadomosć
     if (success)
     {
       Serial.print("Radio msg, timestamp ");
       Serial.println(payload.timestamp);
-      radio_handle_payload(payload); // zareaguj na poprawnie odebraną wiadomosć
     }
     else
     {
       Serial.println("Radio msg failure.");
     }
   }
+
+  // zareaguj na poprawnie odebraną wiadomosć
+  if (success) radio_handle_payload(payload);
 }
 
 // ogólna funkcja do reakcji na poprawnie odebraną wiadomosć przez radio
@@ -188,6 +199,17 @@ void radio_handle_payload(payload_t payload)
 //===========================================================================================================
 // Żądania zasobów przez radio
 //===========================================================================================================
+
+void get_all()
+{
+  // pobierz wartosci zasobów na starcie
+  if (first_loop)
+  {
+    get_led();
+    get_keyboard();
+    first_loop = false;
+  }
+}
 
 void get_led()
 {
@@ -261,9 +283,9 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
 // OBSERVE przyjmuje kolejne wartości sekwencji, token jest zawsze taki sam.
 void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
 {
-  String msg;       // treść wiadomosci odpowiedzi
-  int observe = 0;  // flaga pomocnicza (0 - no option; 1 - observe; 2 - unobserve)
-  int json = 0;     // flaga pomocnicza opcji żądania w formacie JSON
+  String msg; // treść wiadomosci odpowiedzi
+  int observe = 0; // flaga pomocnicza (0 - no option; 1 - observe; 2 - unobserve)
+  int json = 0; // flaga pomocnicza opcji żądania w formacie JSON
   COAP_CONTENT_TYPE content_type = COAP_TEXT_PLAIN; // żądany typ reprezentacji zasobu
 
   conack_callback(packet, ip, port);
@@ -353,7 +375,7 @@ void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
     short received = 0; // ilość przekazanych z sukcesem wiadomosci
   
     Serial.println("Radio stats");
-  
+
     for (uint8_t i = 0; i < 5; i++)
     {
       bool success_send = false;
@@ -364,7 +386,13 @@ void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
   
       if (success_send)
       {
-        success_receive = radio_receive_msg(return_msg); // spróbuj odebrać odpowiedź przez radio
+        network.update(); // odbierz nowe wiadomosci
+  
+        while (network.available()) // sprawdź, czy jest dostępna jakaś nowa wiadomosć
+        {
+          success_receive = radio_read_msg(return_msg); // spróbuj odczytać odpowiedź przez radio
+        }
+        
         if (success_receive) received++;
       }
   
