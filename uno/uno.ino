@@ -71,6 +71,15 @@ EthernetUDP udp;
 Coap server(udp);
 
 //===========================================================================================================
+// statystyki
+//===========================================================================================================
+unsigned long last_timestamp;
+unsigned long last_rtt = 0;
+unsigned long rtt_sum = 0;
+int sent = 0; // ilosć wszystkich wysłanych wiadomosci
+int received = 0; // ilosć wszystkich odebranych wiadomosci
+
+//===========================================================================================================
 // konfiguracja i główna pętla programu
 //===========================================================================================================
 
@@ -100,6 +109,7 @@ void setup()
 
 void loop()
 {
+  network.update(); // odbierz nowe wiadomosci, funkcja niezbędna do działania powłoki RF24Network
   radio_loop();
   server.loop();
 
@@ -126,7 +136,11 @@ bool radio_send_msg(short type, int value)
   while (!success && retries < 6) // próbuj maks. 5 razy
   {
     success = network.write(header, &payload, sizeof(payload)); // spróbuj wysłać wiadomosć
-    if (success) Serial.println("Success.");
+    if (success) 
+    {
+      Serial.println("Success.");
+      sent++; // dodaj pomyslne wysłanie do statystyk
+    }
     else retries++;
   }
 
@@ -138,7 +152,7 @@ bool radio_send_msg(short type, int value)
 bool radio_read_msg(payload_t* p)
 {
   RF24NetworkHeader header(THIS_NODE_ID); // nagłówek wiadomości radiowej, nadanej do Uno
-  return network.read(header, &p, sizeof(p)); // spróbuj odebrać wiadomość
+  return network.read(header, p, sizeof(*p)); // spróbuj odebrać wiadomość
 }
 
 // główna pętla radia
@@ -147,8 +161,6 @@ void radio_loop()
   bool success = false;
   payload_t payload;
   
-  network.update(); // odbierz nowe wiadomosci, funkcja niezbędna do działania powłoki RF24Network
-  
   while (network.available()) // sprawdź, czy jest dostępna jakaś nowa wiadomosć
   {
     success = radio_read_msg(&payload); // spróbuj odczytać wiadomosć
@@ -156,6 +168,7 @@ void radio_loop()
     {
       Serial.print("Radio msg, timestamp ");
       Serial.println(payload.timestamp);
+      received++; // dodaj poprawnie odebraną wiadomosć do statystyk
     }
     else
     {
@@ -178,6 +191,7 @@ void radio_handle_payload(payload_t payload)
 
       led_level = payload.value; // aktualizacja wartosci
       sprintf(lamp, "%d", led_level); // konwertuj pomocniczo wartosć
+      
       break;
 
     case GET_KEYBOARD:
@@ -191,8 +205,17 @@ void radio_handle_payload(payload_t payload)
       break;
 
     default:
-      Serial.println("Unknown radio msg");
+      Serial.print("Unknown radio msg ");
+      Serial.println(payload.type);
+      
       break;
+  }
+
+  if (last_timestamp != 0) 
+  {
+    last_rtt = millis() - last_timestamp;
+    rtt_sum += last_rtt;
+    last_timestamp = 0;
   }
 }
 
@@ -214,12 +237,14 @@ void get_all()
 void get_led()
 {
   Serial.println("Send GET_LED");
+  last_timestamp = millis();
   radio_send_msg(GET_LED, 0);
 }
 
 void get_keyboard()
 {
   Serial.println("Send GET_KEYBOARD");
+  last_timestamp = millis();
   radio_send_msg(GET_KEYBOARD, 0);
 }
 
@@ -369,48 +394,46 @@ void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
   if (packet.code == COAP_GET)
   {
     String payload; // payload wiadomości dla klienta
-    payload_t* return_msg; // uchwyt na wiadomosc zwrotną
-  
-    unsigned long start_time, rtt, rtt_sum = 0;
-    short received = 0; // ilość przekazanych z sukcesem wiadomosci
+    //payload_t return_msg; // uchwyt na wiadomosc zwrotną
   
     Serial.println("Radio stats");
 
-    for (uint8_t i = 0; i < 5; i++)
+    /*for (uint8_t i = 0; i < 5; i++)
     {
       bool success_send = false;
       bool success_receive = false;
+      uint8_t radio_flag = 1;
   
       start_time = millis(); //rozpoczecie pomiaru czasu
       success_send = radio_send_msg(STATS, 0); // spróbuj wysłać wiadomosć przez radio
-  
+
       if (success_send)
       {
-        network.update(); // odbierz nowe wiadomosci
+
+            network.update(); // odbierz nowe wiadomosci
+            
+            while (network.available()) // sprawdź, czy jest dostępna jakaś nowa wiadomosć
+            {
+              success_receive = radio_read_msg(&return_msg); // spróbuj odczytać odpowiedź przez radio
+              radio_flag = 0;
+            }
+            
+            if (success_receive) received++;
   
-        while (network.available()) // sprawdź, czy jest dostępna jakaś nowa wiadomosć
-        {
-          success_receive = radio_read_msg(return_msg); // spróbuj odczytać odpowiedź przez radio
-        }
-        
-        if (success_receive) received++;
+        rtt = millis() - start_time; // obliczenie RTT
+        rtt_sum += rtt; // obliczenie sumarycznego RTT
       }
+    }*/
   
-      rtt = millis() - start_time; // obliczenie RTT
-      rtt_sum += rtt; // obliczenie sumarycznego RTT
-    }
-  
-    double packet_loss = ((5 - received) / 5) * 100; // procent utraconych pakietów
-    double avg_rtt = rtt_sum / 5; // srednie RTT
+    //double avg_rtt = rtt_sum / sent; // srednie RTT
     
-    payload = String(received) + "/5 received, " + String(packet_loss) + "% packet loss, avg rtt " + String(avg_rtt);
+    payload = String(sent) + " sd, " + String(received) + " rc, " 
+              + " last rtt " + String(last_rtt);
     int payload_length = payload.length();
 
     // odpowiedź na żądanie o statystyki
     server.sendResponse(ip, port, packet.messageid, payload.c_str(), strlen(payload.c_str()), 
                         packet.type, COAP_CONTENT, COAP_TEXT_PLAIN, packet.token, packet.tokenlen);
-    
-    delete return_msg; // zwalnianie pamięci
   }
 }
 
