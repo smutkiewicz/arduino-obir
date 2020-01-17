@@ -37,7 +37,7 @@ RF24 radio(A2, 10);
 RF24Network network(radio);
 const short THIS_NODE_ID = 1;
 const short PEER_NODE_ID = 0;
-int OUR_CHANNEL = 47;
+int OUR_CHANNEL = 38;
 
 // Payload radiowy
 struct payload_t

@@ -21,7 +21,7 @@ struct observer
   int port;
   uint8_t token[2];
   uint8_t tokenlen;
-  uint8_t counter; // numer sekwencji
+  int counter; // numer sekwencji
   uint8_t content_type; // typ (plaintext lub json)
 };
 
@@ -102,7 +102,7 @@ void setup()
   // konfiguracja połączenia radiowego
   SPI.begin();
   radio.begin();
-  network.begin(47, THIS_NODE_ID);
+  network.begin(38, THIS_NODE_ID);
   Serial.println("Setup done");
 }
 
@@ -303,6 +303,8 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
     int value = atoi(p);
     if (0 <= value && value <= 1000) // sprawdź czy wartosć żądana jest z zakresu 
     {
+      led_level = value; // uaktualnij wartosć
+      sprintf(lamp, "%d", value);
       set_led(atoi(p)); // ustaw lampkę led na żądaną wartosć
     }
     else // wartosć jest spoza zakresu, odeslij wiadomosć o niepowodzeniu
@@ -410,37 +412,10 @@ void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
     //payload_t return_msg; // uchwyt na wiadomosc zwrotną
   
     Serial.println("Radio stats");
-
-    /*for (uint8_t i = 0; i < 5; i++)
-    {
-      bool success_send = false;
-      bool success_receive = false;
-      uint8_t radio_flag = 1;
-  
-      start_time = millis(); //rozpoczecie pomiaru czasu
-      success_send = radio_send_msg(STATS, 0); // spróbuj wysłać wiadomosć przez radio
-
-      if (success_send)
-      {
-
-            network.update(); // odbierz nowe wiadomosci
-            
-            while (network.available()) // sprawdź, czy jest dostępna jakaś nowa wiadomosć
-            {
-              success_receive = radio_read_msg(&return_msg); // spróbuj odczytać odpowiedź przez radio
-              radio_flag = 0;
-            }
-            
-            if (success_receive) received++;
-  
-        rtt = millis() - start_time; // obliczenie RTT
-        rtt_sum += rtt; // obliczenie sumarycznego RTT
-      }
-    }*/
   
     //double avg_rtt = rtt_sum / sent; // srednie RTT
     
-    payload = String(sent) + " sd, " + String(received) + " rc, " 
+    payload = String(sent) + " snd, " + String(received) + " rcv, " 
               + " last rtt " + String(last_rtt);
     int payload_length = payload.length();
 
