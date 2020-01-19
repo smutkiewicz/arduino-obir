@@ -21,7 +21,7 @@ struct observer
   int port;
   uint8_t token[2];
   uint8_t tokenlen;
-  uint8_t counter; // numer sekwencji
+  int counter; // numer sekwencji
   uint8_t content_type; // typ (plaintext lub json)
 };
 
@@ -71,11 +71,10 @@ EthernetUDP udp;
 Coap server(udp);
 
 //===========================================================================================================
-// statystyki
+// statystyki radia
 //===========================================================================================================
-unsigned long last_timestamp;
-unsigned long last_rtt = 0;
-unsigned long rtt_sum = 0;
+unsigned long last_timestamp; // stempel czasowy zapisany przy wysyłaniu wiadomosci przez radio
+unsigned long last_rtt = 0; // rtt ostatnio wysłanej wiadomosci
 int sent = 0; // ilosć wszystkich wysłanych wiadomosci
 int received = 0; // ilosć wszystkich odebranych wiadomosci
 
@@ -103,7 +102,7 @@ void setup()
   // konfiguracja połączenia radiowego
   SPI.begin();
   radio.begin();
-  network.begin(47, THIS_NODE_ID);
+  network.begin(38, THIS_NODE_ID);
   Serial.println("Setup done");
 }
 
@@ -113,8 +112,7 @@ void loop()
   radio_loop();
   server.loop();
 
-  // pobierz wartosci zasobów na starcie
-  get_all();
+  get_all(); // pobierz wartosci zasobów na starcie
 }
 
 //===========================================================================================================
@@ -124,22 +122,23 @@ void loop()
 // ogólna funkcja do wysyłania wiadomości radiowych do Arduino Mini
 bool radio_send_msg(short type, int value)
 {
-  Serial.print("Radio send msg type ");
+  Serial.print("Radio send ");
   Serial.println(type);
 
   payload_t payload{millis(), type, value};
   RF24NetworkHeader header(PEER_NODE_ID); // nagłówek wiadomości radiowej, nadanej do Mini
 
   bool success = false; // czy wysłanie wiadomości przez radio się powiodło
-  short retries = 1; // ilość prób wysłania wiadomości przez radio, maks. 5
+  short retries = 0; // ilość prób wysłania wiadomości przez radio, maks. 5
 
-  while (!success && retries < 6) // próbuj maks. 5 razy
+  while (!success && retries < 5) // próbuj maks. 5 razy
   {
     success = network.write(header, &payload, sizeof(payload)); // spróbuj wysłać wiadomosć
     if (success) 
     {
       Serial.println("Success.");
       sent++; // dodaj pomyslne wysłanie do statystyk
+      last_timestamp = millis();
     }
     else retries++;
   }
@@ -151,7 +150,7 @@ bool radio_send_msg(short type, int value)
 // ogólna funkcja do odbierania wiadomosci od Arduino Mini
 bool radio_read_msg(payload_t* p)
 {
-  RF24NetworkHeader header(THIS_NODE_ID); // nagłówek wiadomości radiowej, nadanej do Uno
+  RF24NetworkHeader header(THIS_NODE_ID); // nagłówek wiadomości radiowej, nadanej do Mini
   return network.read(header, p, sizeof(*p)); // spróbuj odebrać wiadomość
 }
 
@@ -195,7 +194,7 @@ void radio_handle_payload(payload_t payload)
       break;
 
     case GET_KEYBOARD:
-      Serial.print("Last key pressed was ");
+      Serial.print("Last key = ");
       Serial.println(payload.value);
 
       last_pressed = payload.value; // aktualizacja wartosci
@@ -211,10 +210,17 @@ void radio_handle_payload(payload_t payload)
       break;
   }
 
+  handle_stats();
+}
+
+// funkcja do aktualizacji statystyk Round Trip Time
+void handle_stats()
+{
+  // jesli ostatni timestamp jest = 0, to znaczy że dostalismy wiadomosć dla obserwatora
+  // i nie liczymy RTT
   if (last_timestamp != 0) 
   {
     last_rtt = millis() - last_timestamp;
-    rtt_sum += last_rtt;
     last_timestamp = 0;
   }
 }
@@ -236,15 +242,11 @@ void get_all()
 
 void get_led()
 {
-  Serial.println("Send GET_LED");
-  last_timestamp = millis();
   radio_send_msg(GET_LED, 0);
 }
 
 void get_keyboard()
 {
-  Serial.println("Send GET_KEYBOARD");
-  last_timestamp = millis();
   radio_send_msg(GET_KEYBOARD, 0);
 }
 
@@ -295,15 +297,28 @@ void light_callback(CoapPacket &packet, IPAddress ip, int port)
   {
     char p[packet.payloadlen + 1];
     memcpy(p, packet.payload, packet.payloadlen);
-    p[packet.payloadlen] = NULL; // put null -> makes string
+    p[packet.payloadlen] = NULL; // put null -> tworzy stringa
     String message(p);
-    set_led(atoi(p)); // ustaw lampkę led na żądaną wartosć
+
+    int value = atoi(p);
+    if (0 <= value && value <= 1000) // sprawdź czy wartosć żądana jest z zakresu 
+    {
+      led_level = value; // uaktualnij wartosć
+      sprintf(lamp, "%d", value);
+      set_led(atoi(p)); // ustaw lampkę led na żądaną wartosć
+    }
+    else // wartosć jest spoza zakresu, odeslij wiadomosć o niepowodzeniu
+    {
+      server.sendResponse(ip, port, packet.messageid, message.c_str(), strlen(message.c_str()), 
+                          packet.type, COAP_BAD_REQUEST, COAP_TEXT_PLAIN, packet.token, packet.tokenlen);
+    }
   }
 }
 
 // callback obsługujący żądania dotyczące klawiatury
-// klient, aby stać się obserwatorem, musi wysłać pakiet z opcją OBSERVE o wartości 0, co sprawia iż zostaje wpisany na listę obserwatorów, 
-// aby przestać obserwować zasób może wysłać wiadomość RST lub wiadomość z opcją Observe o wartości 1. 
+// klient, aby stać się obserwatorem, musi wysłać pakiet z opcją OBSERVE o wartości 0, 
+// co sprawia iż zostaje wpisany na listę obserwatorów. 
+// Aby przestać obserwować zasób może wysłać wiadomość RST lub wiadomość z opcją Observe o wartości 1. 
 // Wiadomość od serwera zostaje wysłana przy zmianie wartości zasobu, 
 // OBSERVE przyjmuje kolejne wartości sekwencji, token jest zawsze taki sam.
 void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
@@ -322,9 +337,9 @@ void keyboard_callback(CoapPacket &packet, IPAddress ip, int port)
     // dla każdej z opcji pakietu
     for (int i = 0; i < sizeof(packet.options); i++)
     { 
-      if (packet.options[i].number == COAP_OBSERVE)         // jeśli opcja observe
+      if (packet.options[i].number == COAP_OBSERVE) // jeśli opcja observe
       {
-        if (*(packet.options[i].buffer) == 88) observe = 1;     // obserwuj
+        if (*(packet.options[i].buffer) == 88) observe = 1; // obserwuj
         else if (*(packet.options[i].buffer) == 1) observe = 2; // przestań obserwować
       } 
       
@@ -397,37 +412,10 @@ void statistics_callback(CoapPacket &packet, IPAddress ip, int port)
     //payload_t return_msg; // uchwyt na wiadomosc zwrotną
   
     Serial.println("Radio stats");
-
-    /*for (uint8_t i = 0; i < 5; i++)
-    {
-      bool success_send = false;
-      bool success_receive = false;
-      uint8_t radio_flag = 1;
-  
-      start_time = millis(); //rozpoczecie pomiaru czasu
-      success_send = radio_send_msg(STATS, 0); // spróbuj wysłać wiadomosć przez radio
-
-      if (success_send)
-      {
-
-            network.update(); // odbierz nowe wiadomosci
-            
-            while (network.available()) // sprawdź, czy jest dostępna jakaś nowa wiadomosć
-            {
-              success_receive = radio_read_msg(&return_msg); // spróbuj odczytać odpowiedź przez radio
-              radio_flag = 0;
-            }
-            
-            if (success_receive) received++;
-  
-        rtt = millis() - start_time; // obliczenie RTT
-        rtt_sum += rtt; // obliczenie sumarycznego RTT
-      }
-    }*/
   
     //double avg_rtt = rtt_sum / sent; // srednie RTT
     
-    payload = String(sent) + " sd, " + String(received) + " rc, " 
+    payload = String(sent) + " snd, " + String(received) + " rcv, " 
               + " last rtt " + String(last_rtt);
     int payload_length = payload.length();
 
