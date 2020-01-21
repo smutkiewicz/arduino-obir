@@ -52,11 +52,9 @@ RF24 radio(7, 8);
 RF24Network network(radio);
 
 // id zasobów do komunikacji z radiem
-const short ALL = 0;
 const short GET_KEYBOARD = 1;
 const short GET_LED = 2;
 const short SET_LED = 3;
-const short STATS = 4;
 
 //===========================================================================================================
 // komponenty dla potrzeb Ethernetu i CoAP

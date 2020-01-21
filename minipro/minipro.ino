@@ -240,9 +240,3 @@ void loop() {
   //getKeyAndLog(); // Debug na wypadek testowania klawiatury bez radia
   
 }
-
-//===========================================================================================================
-//                                                                                            K O S T N I C A
-//===========================================================================================================
-
-// Nieuzywane fragmenty kodu na pozniej, obecnie puste.
