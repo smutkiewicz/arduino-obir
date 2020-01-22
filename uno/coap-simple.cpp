@@ -304,7 +304,21 @@ bool Coap::loop() {
 
 // funkcja do wysyłania odpowiedzi ACK na pakiety typu Confirmable
 uint16_t Coap::sendAck(IPAddress ip, int port, uint16_t messageid, uint8_t *token, int tokenlen) {
-    this->sendResponse(ip, port, messageid, NULL, 0, COAP_ACK, COAP_VALID, COAP_TEXT_PLAIN, token, tokenlen);
+
+    CoapPacket packet;
+
+    // złożenie pakietu CoAP
+    packet.type = COAP_ACK;
+    packet.code = COAP_EMPTY;
+    packet.token = token;
+    packet.tokenlen = tokenlen;
+    packet.payload = NULL;
+    packet.payloadlen = 0;
+    packet.optionnum = 0;
+    packet.messageid = messageid;
+    
+    //this->sendResponse(ip, port, messageid, NULL, 0, COAP_ACK, COAP_VALID, COAP_TEXT_PLAIN, token, tokenlen);
+    return this->sendPacket(packet, ip, port);
 }
 
 uint16_t Coap::sendResponse(IPAddress ip, int port, uint16_t messageid, char *payload, int payloadlen,

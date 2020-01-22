@@ -29,13 +29,13 @@ struct observer
 // zasoby
 //===========================================================================================================
 int last_pressed = 35; // kod ascii ostatnio wciśniętego znaku
-int led_level = 950; // poziom światła lampki led (0-1000)
+int led_level = 0; // poziom światła lampki led (0-1000)
 
 // zasób opisujący pozostałe zasoby w formacie CoRE Link Format
 const String well_known = "</light>;ct=0,</keyboard>;ct=0;rt=\"obs\",</statistics>;ct=0";
 
 // łańcuchy dla ułatwienia konwersji dla payloadu
-char lamp[4] = "500"; // 0 - lampka wyłaczona, 1000 - max poziom światła
+char lamp[4] = "0"; // 0 - lampka wyłaczona, 1000 - max poziom światła
 char keyboard = '3'; // ostatni wcisniety znak na klawiaturze
 
 observer our_observer; // obserwator klawiatury
@@ -95,12 +95,13 @@ void setup()
   server.server(keyboard_callback, "keyboard");
   server.server(statistics_callback, "statistics");
   server.server(general_callback, ".well-known/core");
+  server.response(callback_response);
   server.start(); // uruchom serwer coap
 
   // konfiguracja połączenia radiowego
   SPI.begin();
   radio.begin();
-  network.begin(38, THIS_NODE_ID);
+  network.begin(47, THIS_NODE_ID);
   Serial.println("Setup done");
 }
 
@@ -111,6 +112,12 @@ void loop()
   server.loop();
 
   get_all(); // pobierz wartosci zasobów na starcie
+}
+
+// reakcja na wiadomosć ack 
+void callback_response(CoapPacket &packet, IPAddress ip, int port) 
+{
+  Serial.println("resp");
 }
 
 //===========================================================================================================
@@ -263,7 +270,10 @@ void set_led(int value)
 // funkcja wspiera też CoAP ping - puste wiadomosci CON
 void conack_callback(CoapPacket &packet, IPAddress ip, int port)
 {
-  if (packet.type == COAP_CON) server.sendAck(ip, port, packet.messageid, packet.token, packet.tokenlen);
+  if (packet.type == COAP_CON) 
+  {
+    server.sendAck(ip, port, packet.messageid, packet.token, packet.tokenlen);
+  }
 }
 
 // callback obsługujący żądania .well-known/core i zwracający zasób opisujący pozostałe zasoby w formacie CoRE Link Format
@@ -283,7 +293,7 @@ void general_callback(CoapPacket &packet, IPAddress ip, int port)
 void light_callback(CoapPacket &packet, IPAddress ip, int port)
 {
   conack_callback(packet, ip, port); // obsługa CON/CoAP Ping
-
+  
   // obsługa żądania w zależnosci od kodu wiadomosci
   if (packet.code == COAP_GET)
   {
